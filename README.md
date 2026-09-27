@@ -64,15 +64,26 @@ users.
 
 ## Running locally
 
-Requires Go 1.27+ and Docker.
+With Docker only:
 
 ```sh
-docker compose up -d        # start PostgreSQL
-go run ./cmd/scraper        # collect jobs from every source (~6 minutes)
-go run ./cmd/api            # start the server
+docker compose up -d --build        # start PostgreSQL and the API
+docker compose run --rm scraper     # collect jobs from every source (~6 minutes)
+```
+
+Or with Go 1.27+ for development, using Docker just for the database:
+
+```sh
+docker compose up -d postgres       # start PostgreSQL
+go run ./cmd/scraper                # collect jobs from every source (~6 minutes)
+go run ./cmd/api                    # start the server
 ```
 
 Then open **http://localhost:8080**.
+
+The [Dockerfile](Dockerfile) builds both programs into one small image (a
+multi-stage build onto distroless, running as a non-root user). The API is
+its default command, and the scraper runs once and exits.
 
 | Variable | Default |
 |---|---|
@@ -272,7 +283,7 @@ internal/web/                    the search page (embedded HTML, CSS, JS)
 - [ ] Workday-hosted career sites, for large employers like airlines, banks and energy companies
 - [ ] Analytics endpoints: in-demand skills, salary ranges, how long jobs stay open
 - [x] CI with GitHub Actions
-- [ ] Dockerfile for the app
+- [x] Dockerfile for the app
 - [ ] Deploy a public demo
 
 ## Data sources

@@ -15,5 +15,29 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build: .
+    environment:
+      # Inside the compose network, the database's hostname is its service name.
+      DATABASE_URL: postgres://jobs:jobs@postgres:5432/jobs?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Not started by "docker compose up". It runs once and exits:
+  #   docker compose run --rm scraper
+  scraper:
+    build: .
+    command: ["/app/scraper"]
+    environment:
+      DATABASE_URL: postgres://jobs:jobs@postgres:5432/jobs?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["scrape"]
+
 volumes:
   pgdata:

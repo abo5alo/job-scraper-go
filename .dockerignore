@@ -1,0 +1,10 @@
+# Keep the build context small and avoid baking local files into the image.
+.git
+.github
+.vscode
+.idea
+docs
+*.exe
+*.test
+*.out
+.env

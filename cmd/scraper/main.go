@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"job-scraper-go/internal/scraper"
@@ -45,8 +46,9 @@ type source struct {
 }
 
 func run(log *slog.Logger, sourcesPath string) error {
-	// Ctrl+C cancels ctx, which cancels in-flight HTTP requests and queries.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	// Ctrl+C, or SIGTERM from "docker stop", cancels ctx, which cancels
+	// in-flight HTTP requests and queries.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	boards, err := ats.LoadBoards(sourcesPath)
