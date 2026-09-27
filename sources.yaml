@@ -1,0 +1,44 @@
+# Where the scraper collects jobs from.
+
+# Workable's public job search (jobs.workable.com), one search per country.
+# It covers every company that hires through Workable, so it replaces
+# listing Workable companies one by one below. Names must be ones the
+# country detection in internal/job/country.go recognizes.
+workable_search:
+  countries:
+    - Saudi Arabia
+    - United Arab Emirates
+    - Egypt
+    - Jordan
+    - Morocco
+    - Lebanon
+    - Bahrain
+    - Qatar
+    - Oman
+    - Kuwait
+
+# Companies on other applicant tracking systems (ATS), read through the
+# public feed behind each company's careers page.
+#
+#   company: display name stored on every job
+#   ats:     greenhouse | ashby | workable | smartrecruiters | recruitee
+#   slug:    the company's account name in that ATS, visible in the URL of
+#            its careers page, e.g. boards.greenhouse.io/careem
+#
+# Each entry was checked by hand: slugs like "rain" or "spare" exist on
+# these systems but belong to unrelated companies elsewhere in the world.
+# Workable companies (Salla, Foodics, Lucidya) aren't listed: the search
+# above already includes them, and listing them too would double their jobs.
+companies:
+  # United Arab Emirates
+  - { company: Careem,            ats: greenhouse,      slug: careem }
+  - { company: Ziina,             ats: ashby,           slug: ziina }
+  - { company: Namshi,            ats: smartrecruiters, slug: namshi }
+  - { company: Lean Technologies, ats: ashby,           slug: leantech }
+
+  # Saudi Arabia
+  - { company: Tamara,   ats: greenhouse, slug: tamara }
+  - { company: Unifonic, ats: recruitee,  slug: unifonic }
+
+  # Egypt
+  - { company: Thndr, ats: ashby, slug: thndr }

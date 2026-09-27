@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Middle East Jobs</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <h1>Find jobs in the Middle East</h1>
+      <p class="sub">Open roles pulled straight from company career pages.</p>
+
+      <form id="search" class="search" role="search">
+        <input id="q" name="q" type="search" placeholder="Job title or keyword, e.g. backend engineer"
+               autocomplete="off" aria-label="Job title or keyword">
+        <input id="location" name="location" type="search" placeholder="City, e.g. Riyadh"
+               autocomplete="off" aria-label="City">
+        <button type="submit">Search</button>
+      </form>
+
+      <div class="filters">
+        <select id="country" name="country" aria-label="Country">
+          <option value="">Any country</option>
+        </select>
+        <select id="level" name="level" aria-label="Level">
+          <option value="">Any level</option>
+          <option value="intern">Intern</option>
+          <option value="junior">Junior</option>
+          <option value="mid">Mid-level</option>
+          <option value="senior">Senior</option>
+          <option value="lead">Lead / Principal</option>
+          <option value="executive">Director / Executive</option>
+        </select>
+        <label class="check"><input id="remote" name="remote" type="checkbox" value="true"> Remote only</label>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p id="status" class="status" aria-live="polite"></p>
+    <ol id="results" class="results"></ol>
+    <nav id="pager" class="pager" hidden>
+      <button id="prev" type="button">← Previous</button>
+      <span id="page-info"></span>
+      <button id="next" type="button">Next →</button>
+    </nav>
+  </main>
+</body>
+</html>
