@@ -29,6 +29,7 @@ type Job struct {
 	Description string // plain text, HTML stripped
 	Tags        []string
 	Skills      []string // detected from the title and description, see skills.go
+	Tech        bool     // a tech job, see tech.go
 
 	// Salary fields are pointers because "unknown" is different from zero.
 	// Most postings don't publish a salary, and we must not average in 0s.
@@ -66,6 +67,7 @@ func (j *Job) Normalize() {
 	}
 
 	j.Skills = SkillsFromText(j.Title + "\n" + j.Description)
+	j.Tech = IsTech(j.Title, j.Skills)
 }
 
 var placeholderCompanies = map[string]bool{

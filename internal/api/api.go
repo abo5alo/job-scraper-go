@@ -14,6 +14,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -28,7 +29,7 @@ type JobStore interface {
 	SearchJobs(ctx context.Context, p store.SearchParams) (store.SearchResult, error)
 	GetJob(ctx context.Context, id int64) (store.JobRecord, error)
 	Stats(ctx context.Context, p store.SearchParams, top int) (store.Stats, error)
-	CountryCounts(ctx context.Context, postedSince time.Time) ([]store.CountryCount, error)
+	CountryCounts(ctx context.Context, postedSince time.Time, techOnly bool) ([]store.CountryCount, error)
 	Ping(ctx context.Context) error
 }
 
@@ -141,7 +142,14 @@ func (s *server) stats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) countries(w http.ResponseWriter, r *http.Request) {
-	counts, err := s.store.CountryCounts(r.Context(), oldestPostDate())
+	params, _, err := parseSearchParams(url.Values{"tech": {r.URL.Query().Get("tech")}})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	techOnly := params.Tech != nil && *params.Tech
+
+	counts, err := s.store.CountryCounts(r.Context(), oldestPostDate(), techOnly)
 	if err != nil {
 		s.internalError(w, r, err)
 		return

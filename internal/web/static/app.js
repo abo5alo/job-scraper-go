@@ -12,6 +12,7 @@ const prevBtn = document.getElementById("prev");
 const nextBtn = document.getElementById("next");
 const pageInfo = document.getElementById("page-info");
 const remoteBox = document.getElementById("remote");
+const techBox = document.getElementById("tech");
 const skillInput = document.getElementById("skill");
 const skillChip = document.getElementById("skill-chip");
 const insightsEl = document.getElementById("insights");
@@ -40,7 +41,14 @@ function formParams() {
     if (value) params.set(name, value);
   }
   if (remoteBox.checked) params.set("remote", "true");
+  if (techBox.checked) params.set("tech", "true");
   return params;
+}
+
+// Tech-only is the default, so the address bar only mentions it when it's
+// off ("tech=all"). A plain link to the site shows tech jobs.
+function techFromURL() {
+  return new URLSearchParams(location.search).get("tech") !== "all";
 }
 
 // Restore the form from the address bar, so a search can be shared or reloaded.
@@ -50,20 +58,26 @@ function restoreForm() {
     document.getElementById(name).value = params.get(name) ?? "";
   }
   remoteBox.checked = params.get("remote") === "true";
+  techBox.checked = techFromURL();
   page = Math.max(1, parseInt(params.get("page"), 10) || 1);
 }
 
+// Fills the country dropdown with job counts. It runs again when the tech
+// switch changes, since the counts depend on it, and keeps the selection.
 async function loadCountries() {
   try {
-    const res = await fetch("/countries");
+    const res = await fetch(techBox.checked ? "/countries?tech=true" : "/countries");
     if (!res.ok) return;
     const select = document.getElementById("country");
+    const selected = select.value;
+    select.replaceChildren(select.options[0]); // keep "Any country"
     for (const c of await res.json()) {
       const option = document.createElement("option");
       option.value = c.code;
       option.textContent = `${countryName(c.code)} (${c.count})`;
       select.append(option);
     }
+    select.value = selected;
   } catch {
     // The page still works without the country list.
   }
@@ -72,7 +86,10 @@ async function loadCountries() {
 async function search() {
   const params = formParams();
   if (page > 1) params.set("page", page);
-  history.replaceState(null, "", params.size ? `?${params}` : location.pathname);
+  const shown = new URLSearchParams(params);
+  if (techBox.checked) shown.delete("tech");
+  else shown.set("tech", "all");
+  history.replaceState(null, "", shown.size ? `?${shown}` : location.pathname);
 
   showSkillFilter();
   inFlight?.abort();
@@ -263,6 +280,13 @@ for (const id of ["country", "level", "remote"]) {
     search();
   });
 }
+// Countries reload first: if the selected country has no jobs under the new
+// setting, the dropdown drops it, and the search must see that.
+techBox.addEventListener("change", async () => {
+  await loadCountries();
+  page = 1;
+  search();
+});
 skillChip.addEventListener("click", () => {
   skillInput.value = "";
   page = 1;
@@ -279,7 +303,9 @@ nextBtn.addEventListener("click", () => {
   scrollTo({ top: 0, behavior: "smooth" });
 });
 
-// Countries load first so a country in the address bar can be selected.
+// Countries load first so a country in the address bar can be selected. Their
+// counts depend on the tech switch, so that's read from the address bar first.
+techBox.checked = techFromURL();
 await loadCountries();
 restoreForm();
 search();

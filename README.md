@@ -11,17 +11,25 @@ a search page.
 
 ## Highlights
 
-- **~3,400 jobs from 18 sources** across 10 countries: Workable's job
-  search (one per country), company job boards on 5 different applicant
-  tracking systems, and the Remote OK API. One scrape takes about 6 minutes,
-  and that's deliberate: the scrapers are rate limited per host.
+- **18 sources covering 10 countries:** Workable's job search (one per
+  country), company job boards on 5 different applicant tracking systems,
+  and the Remote OK API. The last run collected ~3,400 jobs, about 800 of
+  them tech. Saudi Arabia and the UAE are still missing because Workable's
+  daily request quota cut that run short (see the roadmap). One scrape takes
+  about 6 minutes, and that's deliberate: the scrapers are rate limited per
+  host.
 - **Full-text search** with filters for country, city, seniority, company,
   skill and remote work, built on Postgres, with no separate search engine.
 - **Market insights for any search:** which skills the matching jobs ask
-  for, who's hiring most, and how they split by seniority. Skills are
-  detected from ~55 patterns tuned against real postings, including business
+  for, who's hiring most, and how they split by seniority. 56 skills are
+  detected with patterns tuned against real postings, including business
   tools, certifications and spoken languages. English and Arabic are among
   the most requested skills in the region.
+- **Tech jobs by default, everything on request.** Each job is classified
+  as tech or not: clear titles decide ("Sales Engineer" and "Site Engineer"
+  aren't tech, "Site Reliability Engineer" is), and vague ones like
+  "Specialist" fall back to the skills the job asks for. Non-tech jobs stay
+  stored, and the search page shows them with one checkbox.
 - **Knows when a job closes.** Company feeds list every open job, so one that
   disappears has been filled. Closed jobs stay in the database for history
   but drop out of search, and so do postings older than 3 months.
@@ -107,6 +115,7 @@ its default command, and the scraper runs once and exits.
 | `location` | `riyadh` | Substring of the location text |
 | `company` | `careem` | Substring of the company name |
 | `skill` | `python,sql` | Jobs that ask for all of these skills |
+| `tech` | `true` | Only tech jobs (`false` for only non-tech). The search page sets it by default |
 | `remote` | `true` | |
 | `include_closed` | `true` | Also return jobs that have been filled |
 | `sort` | `newest` | `relevance` (default when `q` is set) or `newest` |
@@ -253,7 +262,7 @@ needs, without running Elasticsearch next to the database.
 only as query parameters, and `LIKE` wildcards in input are escaped. All
 jobs from a source are saved in one batched round trip.
 
-**Detection rules can be re-applied.** Level, country, skills and
+**Detection rules can be re-applied.** Level, country, skills, tech and
 placeholder companies are all derived from the scraped text, and the rules
 keep improving. `go run ./cmd/scraper -renormalize` re-runs them over every
 stored job and saves what changed, without re-scraping any source.
@@ -288,6 +297,7 @@ by a test:
 | "Go" means the language in "Python, Go, Rust" but not in "Go-Live", "Go-to-Market" or "Go the extra mile" | Go only counts inside a list of technologies or after "in"/"with"; the test cases are phrases from real postings |
 | "Excel in a fast-paced team" isn't a spreadsheet skill, and "react quickly" isn't React | Verb phrases are removed before matching, and words with an everyday meaning must be capitalized |
 | 361 unrelated Egyptian jobs all listed their employer as "Company" | Placeholder names are stored as unknown, so they don't top the "who's hiring" list |
+| "Engineer" is 76 sales engineers, site engineers and BIM engineers before it's software | Non-tech job words are checked before tech ones, and "site" only counts as "site engineer", so Site Reliability Engineers stay tech |
 
 ## Testing
 

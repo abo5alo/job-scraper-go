@@ -26,6 +26,7 @@ type jobResponse struct {
 	Location    string          `json:"location,omitempty"`
 	Country     string          `json:"country,omitempty"`
 	Remote      bool            `json:"remote"`
+	Tech        bool            `json:"tech"`
 	Level       string          `json:"level"`
 	URL         string          `json:"url"`
 	Source      string          `json:"source"`
@@ -56,6 +57,7 @@ func toJobResponse(j store.JobRecord, maxDesc int) jobResponse {
 		Location:    j.Location,
 		Country:     j.Country,
 		Remote:      j.Remote,
+		Tech:        j.Tech,
 		Level:       string(j.Seniority),
 		URL:         j.URL,
 		Source:      j.Source,

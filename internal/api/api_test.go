@@ -37,7 +37,7 @@ func (f *fakeStore) GetJob(_ context.Context, id int64) (store.JobRecord, error)
 	return store.JobRecord{}, store.ErrNotFound
 }
 
-func (f *fakeStore) CountryCounts(context.Context, time.Time) ([]store.CountryCount, error) {
+func (f *fakeStore) CountryCounts(context.Context, time.Time, bool) ([]store.CountryCount, error) {
 	return []store.CountryCount{{Code: "SA", Count: 76}}, nil
 }
 
@@ -146,6 +146,7 @@ func TestSearchJobsValidation(t *testing.T) {
 		"limit=1000",
 		"sort=salary",
 		"skill=cobol",
+		"tech=maybe",
 		"q=" + strings.Repeat("a", maxQueryLen+1),
 	}
 	for _, q := range bad {
@@ -158,14 +159,15 @@ func TestSearchJobsValidation(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	st := &fakeStore{}
-	rec := get(t, newTestHandler(st), "/stats?country=AE&skill=sql,python")
+	rec := get(t, newTestHandler(st), "/stats?country=AE&skill=sql,python&tech=true")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
 	}
 
 	// Same filters as /jobs, with skill names made canonical.
 	p := st.gotParams
-	if !slices.Equal(p.Countries, []string{"AE"}) || !slices.Equal(p.Skills, []string{"SQL", "Python"}) || p.PostedSince.IsZero() {
+	if !slices.Equal(p.Countries, []string{"AE"}) || !slices.Equal(p.Skills, []string{"SQL", "Python"}) ||
+		p.Tech == nil || !*p.Tech || p.PostedSince.IsZero() {
 		t.Errorf("params = %+v", p)
 	}
 

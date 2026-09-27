@@ -159,3 +159,40 @@ func TestNormalizeHidesPlaceholderCompany(t *testing.T) {
 		}
 	}
 }
+
+func TestIsTech(t *testing.T) {
+	tests := []struct {
+		title  string
+		skills []string
+		want   bool
+	}{
+		// Real titles, tech by title alone.
+		{"Senior Full-Stack Software Engineer (React, Next.js & Java)", nil, true},
+		{"Senior DevOps Engineer", nil, true},
+		{"Senior Site Reliability Engineer", nil, true}, // "site", but not a site engineer
+		{"Data Analyst", nil, true},
+		{"IT Release Manager", nil, true},
+		{"Senior ServiceNow ITSM Architect with AI & ITAM exposure", nil, true},
+		{"Analyste en informatique polyvalent(e)", nil, true},
+		{"Product Designer", nil, true},
+		// Real titles that sound technical but aren't tech jobs.
+		{"Senior Site Engineer", nil, false},
+		{"B2B Sales Engineer - Air Filtration", nil, false},
+		{"Business Development Manager - Software Sales - Public Sector", nil, false},
+		{"Senior Electrical BIM Engineer", nil, false},
+		{"Senior Graphic Designer", nil, false},
+		{"Technical Recruitment Partner", nil, false},
+		// Non-tech titles win even when the job lists tech skills.
+		{"Cloud Sales Account Manager", []string{"AWS", "Azure"}, false},
+		// Vague titles fall back to skills: two technical ones make it tech.
+		{"Customer Success Engineer", []string{"Java", "SQL", "React"}, true},
+		{"TechOps & Support Manager", []string{"MongoDB", "Kubernetes", "Linux"}, true},
+		{"Operations Specialist", []string{"SQL", "Excel"}, false}, // SQL alone doesn't count
+		{"Accountant", nil, false},
+	}
+	for _, tt := range tests {
+		if got := IsTech(tt.title, tt.skills); got != tt.want {
+			t.Errorf("IsTech(%q, %v) = %v, want %v", tt.title, tt.skills, got, tt.want)
+		}
+	}
+}

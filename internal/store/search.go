@@ -38,6 +38,7 @@ type SearchParams struct {
 	Location      string    // substring of the location text, e.g. "Riyadh"
 	Company       string    // substring of the company name
 	Remote        *bool     // nil = either
+	Tech          *bool     // nil = either; see job.IsTech
 	PostedSince   time.Time // zero = any age
 	IncludeClosed bool
 	Sort          string
@@ -52,7 +53,7 @@ type SearchResult struct {
 
 const jobColumns = `
 	id, source, external_id, board, title, company, location, country, remote,
-	seniority, url, description, tags, skills, salary_min, salary_max, salary_currency,
+	seniority, url, description, tags, skills, tech, salary_min, salary_max, salary_currency,
 	posted_at, first_seen_at, last_seen_at, closed_at`
 
 func scanJob(row pgx.Row) (JobRecord, error) {
@@ -60,7 +61,7 @@ func scanJob(row pgx.Row) (JobRecord, error) {
 	var seniority string
 	err := row.Scan(
 		&r.ID, &r.Source, &r.ExternalID, &r.Board, &r.Title, &r.Company, &r.Location, &r.Country, &r.Remote,
-		&seniority, &r.URL, &r.Description, &r.Tags, &r.Skills, &r.SalaryMin, &r.SalaryMax, &r.SalaryCurrency,
+		&seniority, &r.URL, &r.Description, &r.Tags, &r.Skills, &r.Tech, &r.SalaryMin, &r.SalaryMax, &r.SalaryCurrency,
 		&r.PostedAt, &r.FirstSeenAt, &r.LastSeenAt, &r.ClosedAt,
 	)
 	r.Seniority = job.Seniority(seniority)
@@ -118,6 +119,9 @@ func buildFilter(p SearchParams) *filter {
 	if p.Remote != nil {
 		conds = append(conds, "remote = "+f.arg(*p.Remote))
 	}
+	if p.Tech != nil {
+		conds = append(conds, "tech = "+f.arg(*p.Tech))
+	}
 	if !p.PostedSince.IsZero() {
 		conds = append(conds, postedSinceCond+" >= "+f.arg(p.PostedSince))
 	}
@@ -171,14 +175,16 @@ type CountryCount struct {
 const postedSinceCond = "COALESCE(posted_at, first_seen_at)"
 
 // CountryCounts returns how many open jobs each country has, most first,
-// counting only jobs posted since the given time. The search page uses it
-// for its country dropdown, so the counts match what a search would return.
-func (s *Store) CountryCounts(ctx context.Context, postedSince time.Time) ([]CountryCount, error) {
+// counting only jobs posted since the given time, and only tech jobs when
+// techOnly is set. The search page uses it for its country dropdown, so the
+// counts match what a search would return.
+func (s *Store) CountryCounts(ctx context.Context, postedSince time.Time, techOnly bool) ([]CountryCount, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT country, count(*) FROM jobs
 		WHERE closed_at IS NULL AND country <> '' AND `+postedSinceCond+` >= $1
+		  AND (tech OR NOT $2)
 		GROUP BY country
-		ORDER BY count(*) DESC, country`, postedSince)
+		ORDER BY count(*) DESC, country`, postedSince, techOnly)
 	if err != nil {
 		return nil, fmt.Errorf("count countries: %w", err)
 	}

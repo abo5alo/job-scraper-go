@@ -160,7 +160,7 @@ func TestSearchHidesOldJobs(t *testing.T) {
 	if err != nil || res.Total != 2 {
 		t.Fatalf("total = %d, err = %v; want 2 (the 8-year-old job hidden)", res.Total, err)
 	}
-	counts, err := s.CountryCounts(ctx, since)
+	counts, err := s.CountryCounts(ctx, since, false)
 	if err != nil || len(counts) != 1 || counts[0].Count != 2 {
 		t.Errorf("CountryCounts = %+v, %v; want AE: 2", counts, err)
 	}
@@ -262,5 +262,37 @@ func TestRenormalize(t *testing.T) {
 	// Running it again changes nothing.
 	if n, err := s.Renormalize(ctx); err != nil || n != 0 {
 		t.Errorf("second Renormalize = %d, %v; want 0", n, err)
+	}
+}
+
+func TestTechFilter(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	dev := testJob("1", "Backend Developer", "AE", job.SeniorityMid)
+	dev.Tech = true
+	sales := testJob("2", "Sales Engineer", "AE", job.SeniorityMid)
+	accountant := testJob("3", "Accountant", "SA", job.SeniorityMid)
+	if err := s.UpsertJobs(ctx, []job.Job{dev, sales, accountant}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	techOnly := true
+	res, err := s.SearchJobs(ctx, SearchParams{Tech: &techOnly, Limit: 10})
+	if err != nil || res.Total != 1 || !res.Jobs[0].Tech {
+		t.Errorf("tech=true: %+v, %v", res, err)
+	}
+	if res, _ := s.SearchJobs(ctx, SearchParams{Limit: 10}); res.Total != 3 {
+		t.Errorf("no tech filter: total = %d, want all 3", res.Total)
+	}
+
+	// The country dropdown's counts follow the same switch.
+	all, err := s.CountryCounts(ctx, time.Time{}, false)
+	if err != nil || len(all) != 2 {
+		t.Errorf("all countries = %+v, %v; want AE and SA", all, err)
+	}
+	tech, err := s.CountryCounts(ctx, time.Time{}, true)
+	if err != nil || len(tech) != 1 || tech[0] != (CountryCount{"AE", 1}) {
+		t.Errorf("tech countries = %+v, %v; want AE: 1", tech, err)
 	}
 }

@@ -67,6 +67,13 @@ func parseSearchParams(v url.Values) (p store.SearchParams, page int, err error)
 		}
 		p.Remote = &b
 	}
+	if s := v.Get("tech"); s != "" {
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			return p, 0, errors.New("tech must be true or false")
+		}
+		p.Tech = &b
+	}
 	if s := v.Get("include_closed"); s != "" {
 		if p.IncludeClosed, err = strconv.ParseBool(s); err != nil {
 			return p, 0, errors.New("include_closed must be true or false")
