@@ -3,7 +3,10 @@
 // serves them. Nothing in here knows about HTTP, HTML, or SQL.
 package job
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Job struct {
 	// Source + ExternalID together identify a posting. ExternalID is whatever
@@ -17,7 +20,7 @@ type Job struct {
 	Board string
 
 	Title       string
-	Company     string
+	Company     string // "" when the employer is hidden
 	Location    string // free text as the source wrote it: "Riyadh, Saudi Arabia"
 	Country     string // ISO 3166-1 alpha-2 code like "AE"; "" when unknown
 	Remote      bool
@@ -25,6 +28,7 @@ type Job struct {
 	URL         string
 	Description string // plain text, HTML stripped
 	Tags        []string
+	Skills      []string // detected from the title and description, see skills.go
 
 	// Salary fields are pointers because "unknown" is different from zero.
 	// Most postings don't publish a salary, and we must not average in 0s.
@@ -53,4 +57,17 @@ func (j *Job) Normalize() {
 	if j.Country == "" {
 		j.Country = CountryFromText(j.Location)
 	}
+
+	// Hidden employers show up under a placeholder name, and 361 unrelated
+	// Workable jobs in Egypt were all "Company". Stored as-is, the placeholder
+	// would top every "who's hiring" chart, so it becomes "" (unknown).
+	if placeholderCompanies[strings.ToLower(strings.TrimSpace(j.Company))] {
+		j.Company = ""
+	}
+
+	j.Skills = SkillsFromText(j.Title + "\n" + j.Description)
+}
+
+var placeholderCompanies = map[string]bool{
+	"company": true, "confidential": true, "confidential company": true, "undisclosed": true,
 }

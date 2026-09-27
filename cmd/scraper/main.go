@@ -2,6 +2,7 @@
 //
 //	go run ./cmd/scraper
 //	go run ./cmd/scraper -sources path/to/sources.yaml
+//	go run ./cmd/scraper -renormalize   # re-apply detection rules, no scraping
 package main
 
 import (
@@ -23,13 +24,14 @@ import (
 
 func main() {
 	sourcesPath := flag.String("sources", "sources.yaml", "file listing the job sources to scrape")
+	renormalize := flag.Bool("renormalize", false, "re-detect level, country and skills for stored jobs instead of scraping")
 	flag.Parse()
 
 	// slog gives structured key=value logs, which are much easier to search
 	// than free-form Printf output once the app runs in production.
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	if err := run(log, *sourcesPath); err != nil {
+	if err := run(log, *sourcesPath, *renormalize); err != nil {
 		log.Error("scraper failed", "err", err)
 		os.Exit(1)
 	}
@@ -45,7 +47,7 @@ type source struct {
 	fullListing bool
 }
 
-func run(log *slog.Logger, sourcesPath string) error {
+func run(log *slog.Logger, sourcesPath string, renormalize bool) error {
 	// Ctrl+C, or SIGTERM from "docker stop", cancels ctx, which cancels
 	// in-flight HTTP requests and queries.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -68,6 +70,16 @@ func run(log *slog.Logger, sourcesPath string) error {
 
 	if err := db.Migrate(ctx); err != nil {
 		return err
+	}
+
+	if renormalize {
+		start := time.Now()
+		n, err := db.Renormalize(ctx)
+		if err != nil {
+			return err
+		}
+		log.Info("renormalized stored jobs", "changed", n, "duration", time.Since(start).Round(time.Millisecond))
+		return nil
 	}
 
 	// One shared client, so rate limits apply per host across all scrapers:

@@ -1,8 +1,8 @@
 // Search page logic. Plain JavaScript, no framework: it reads the form,
-// calls GET /jobs, and renders the results.
+// calls GET /jobs and GET /stats, and renders the results.
 
 const LIMIT = 20;
-const FIELDS = ["q", "location", "country", "level"];
+const FIELDS = ["q", "location", "country", "level", "skill"];
 
 const form = document.getElementById("search");
 const statusEl = document.getElementById("status");
@@ -12,6 +12,11 @@ const prevBtn = document.getElementById("prev");
 const nextBtn = document.getElementById("next");
 const pageInfo = document.getElementById("page-info");
 const remoteBox = document.getElementById("remote");
+const skillInput = document.getElementById("skill");
+const skillChip = document.getElementById("skill-chip");
+const insightsEl = document.getElementById("insights");
+const topSkillsEl = document.getElementById("top-skills");
+const topCompaniesEl = document.getElementById("top-companies");
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 const relativeTime = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
@@ -69,14 +74,22 @@ async function search() {
   if (page > 1) params.set("page", page);
   history.replaceState(null, "", params.size ? `?${params}` : location.pathname);
 
-  params.set("limit", LIMIT);
+  showSkillFilter();
   inFlight?.abort();
-  inFlight = new AbortController();
+  const request = (inFlight = new AbortController());
   statusEl.textContent = "Searching…";
 
+  // Stats describe the whole search, not one page, so they get the filters
+  // without paging. They load alongside the jobs; if they fail, the page
+  // just goes without them.
+  const stats = fetch(`/stats?${formParams()}`, { signal: request.signal })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+
+  params.set("limit", LIMIT);
   let res, body;
   try {
-    res = await fetch(`/jobs?${params}`, { signal: inFlight.signal });
+    res = await fetch(`/jobs?${params}`, { signal: request.signal });
     body = await res.json();
   } catch (err) {
     if (err.name === "AbortError") return; // replaced by a newer search
@@ -88,9 +101,54 @@ async function search() {
     statusEl.textContent = body.error ?? "Something went wrong.";
     resultsEl.replaceChildren();
     pagerEl.hidden = true;
+    insightsEl.hidden = true;
     return;
   }
   render(body);
+
+  const st = await stats;
+  if (request === inFlight) renderStats(st); // skip if a newer search started
+}
+
+function renderStats(st) {
+  insightsEl.hidden = !st || st.total === 0;
+  if (insightsEl.hidden) return;
+
+  // A skill that's already a filter would show as 100%, which says nothing.
+  const active = selectedSkills();
+  const skills = st.top_skills.filter((s) => !active.includes(s.skill)).slice(0, 10);
+  topSkillsEl.replaceChildren(
+    ...skills.map((s) => {
+      const button = el("button", null, s.skill);
+      button.type = "button";
+      button.title = `${s.count.toLocaleString()} of ${st.total.toLocaleString()} jobs · click to filter`;
+      button.append(el("span", "share", `${Math.round(s.share * 100)}%`));
+      button.addEventListener("click", () => {
+        skillInput.value = [...active, s.skill].join(",");
+        page = 1;
+        search();
+      });
+      const li = document.createElement("li");
+      li.append(button);
+      return li;
+    }),
+  );
+
+  const companies = st.top_companies.slice(0, 5).map((c) => `${c.company} (${c.count})`);
+  topCompaniesEl.textContent = companies.length ? `Hiring most: ${companies.join(" · ")}` : "";
+}
+
+function selectedSkills() {
+  return skillInput.value.split(",").filter(Boolean);
+}
+
+// The skill filter has no form control of its own, so it shows as a chip
+// that clears it when clicked.
+function showSkillFilter() {
+  const skills = selectedSkills();
+  skillChip.hidden = skills.length === 0;
+  skillChip.textContent = `${skills.join(" + ")} ✕`;
+  skillChip.setAttribute("aria-label", `Remove skill filter: ${skills.join(", ")}`);
 }
 
 function render({ total, jobs }) {
@@ -123,12 +181,14 @@ function jobCard(job) {
   // Prefer the company's own wording ("Jeddah, Saudi Arabia"); fall back to
   // the detected country when the location is blank.
   const place = job.location || (job.country ? countryName(job.country) : "");
-  const meta = el("p", "meta", [job.company, place].filter(Boolean).join(" · "));
+  const company = job.company || "Undisclosed company";
+  const meta = el("p", "meta", [company, place].filter(Boolean).join(" · "));
 
   const tags = el("div", "tags");
   tags.append(el("span", `tag level-${job.level}`, levelLabel(job.level)));
   if (job.remote) tags.append(el("span", "tag remote", "Remote"));
   if (job.salary) tags.append(el("span", "tag salary", formatSalary(job.salary)));
+  for (const skill of (job.skills ?? []).slice(0, 5)) tags.append(el("span", "tag skill", skill));
   if (job.posted_at) tags.append(el("span", "tag date", timeAgo(job.posted_at)));
 
   const desc = el("p", "desc", job.description ?? "");
@@ -203,6 +263,11 @@ for (const id of ["country", "level", "remote"]) {
     search();
   });
 }
+skillChip.addEventListener("click", () => {
+  skillInput.value = "";
+  page = 1;
+  search();
+});
 prevBtn.addEventListener("click", () => {
   page--;
   search();

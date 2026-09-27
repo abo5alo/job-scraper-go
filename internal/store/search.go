@@ -34,6 +34,7 @@ type SearchParams struct {
 	Query         string    // full-text search over title, company, description
 	Seniority     []string  // any of these levels
 	Countries     []string  // any of these ISO codes
+	Skills        []string  // all of these skills
 	Location      string    // substring of the location text, e.g. "Riyadh"
 	Company       string    // substring of the company name
 	Remote        *bool     // nil = either
@@ -51,7 +52,7 @@ type SearchResult struct {
 
 const jobColumns = `
 	id, source, external_id, board, title, company, location, country, remote,
-	seniority, url, description, tags, salary_min, salary_max, salary_currency,
+	seniority, url, description, tags, skills, salary_min, salary_max, salary_currency,
 	posted_at, first_seen_at, last_seen_at, closed_at`
 
 func scanJob(row pgx.Row) (JobRecord, error) {
@@ -59,64 +60,80 @@ func scanJob(row pgx.Row) (JobRecord, error) {
 	var seniority string
 	err := row.Scan(
 		&r.ID, &r.Source, &r.ExternalID, &r.Board, &r.Title, &r.Company, &r.Location, &r.Country, &r.Remote,
-		&seniority, &r.URL, &r.Description, &r.Tags, &r.SalaryMin, &r.SalaryMax, &r.SalaryCurrency,
+		&seniority, &r.URL, &r.Description, &r.Tags, &r.Skills, &r.SalaryMin, &r.SalaryMax, &r.SalaryCurrency,
 		&r.PostedAt, &r.FirstSeenAt, &r.LastSeenAt, &r.ClosedAt,
 	)
 	r.Seniority = job.Seniority(seniority)
 	return r, err
 }
 
-// SearchJobs builds the WHERE clause from whichever filters are set.
-func (s *Store) SearchJobs(ctx context.Context, p SearchParams) (SearchResult, error) {
-	var (
-		conds []string
-		args  []any
-	)
-	// arg stores a value as a query parameter and returns its placeholder
-	// ($1, $2, ...). User input only ever reaches SQL this way, never by
-	// pasting it into the query string, which is what rules out SQL injection.
-	arg := func(v any) string {
-		args = append(args, v)
-		return fmt.Sprintf("$%d", len(args))
-	}
+// filter is a WHERE clause and the query parameters it refers to.
+type filter struct {
+	where string
+	args  []any
+	rank  string // relevance expression when there's a text query, else ""
+}
 
-	rank := ""
+// arg stores a value as a query parameter and returns its placeholder ($1,
+// $2, ...). User input only ever reaches SQL this way, never by pasting it
+// into the query string, which is what rules out SQL injection.
+func (f *filter) arg(v any) string {
+	f.args = append(f.args, v)
+	return fmt.Sprintf("$%d", len(f.args))
+}
+
+// buildFilter turns whichever search params are set into a WHERE clause.
+// Search and stats share it, so the stats always describe exactly the jobs
+// a search with the same params would return.
+func buildFilter(p SearchParams) *filter {
+	f := &filter{}
+	var conds []string
+
 	if p.Query != "" {
 		// websearch_to_tsquery understands what people type into search
 		// boxes: `backend engineer`, `"data analyst"`, `python -django`.
-		tsq := "websearch_to_tsquery('english', " + arg(p.Query) + ")"
+		tsq := "websearch_to_tsquery('english', " + f.arg(p.Query) + ")"
 		conds = append(conds, "search @@ "+tsq)
-		rank = "ts_rank(search, " + tsq + ")"
+		f.rank = "ts_rank(search, " + tsq + ")"
 	}
 	if !p.IncludeClosed {
 		conds = append(conds, "closed_at IS NULL")
 	}
 	if len(p.Seniority) > 0 {
-		conds = append(conds, "seniority = ANY("+arg(p.Seniority)+")")
+		conds = append(conds, "seniority = ANY("+f.arg(p.Seniority)+")")
 	}
 	if len(p.Countries) > 0 {
-		conds = append(conds, "country = ANY("+arg(p.Countries)+")")
+		conds = append(conds, "country = ANY("+f.arg(p.Countries)+")")
+	}
+	if len(p.Skills) > 0 {
+		// @> is "contains", which the GIN index on skills answers directly.
+		conds = append(conds, "skills @> "+f.arg(p.Skills))
 	}
 	if p.Location != "" {
-		conds = append(conds, "location ILIKE "+arg("%"+escapeLike(p.Location)+"%"))
+		conds = append(conds, "location ILIKE "+f.arg("%"+escapeLike(p.Location)+"%"))
 	}
 	if p.Company != "" {
-		conds = append(conds, "company ILIKE "+arg("%"+escapeLike(p.Company)+"%"))
+		conds = append(conds, "company ILIKE "+f.arg("%"+escapeLike(p.Company)+"%"))
 	}
 	if p.Remote != nil {
-		conds = append(conds, "remote = "+arg(*p.Remote))
+		conds = append(conds, "remote = "+f.arg(*p.Remote))
 	}
 	if !p.PostedSince.IsZero() {
-		conds = append(conds, postedSinceCond+" >= "+arg(p.PostedSince))
+		conds = append(conds, postedSinceCond+" >= "+f.arg(p.PostedSince))
 	}
 
-	where := ""
 	if len(conds) > 0 {
-		where = "WHERE " + strings.Join(conds, " AND ")
+		f.where = "WHERE " + strings.Join(conds, " AND ")
 	}
+	return f
+}
+
+// SearchJobs returns one page of the jobs matching p, plus the total count.
+func (s *Store) SearchJobs(ctx context.Context, p SearchParams) (SearchResult, error) {
+	f := buildFilter(p)
 
 	var res SearchResult
-	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM jobs "+where, args...).Scan(&res.Total); err != nil {
+	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM jobs "+f.where, f.args...).Scan(&res.Total); err != nil {
 		return res, fmt.Errorf("count jobs: %w", err)
 	}
 
@@ -124,14 +141,14 @@ func (s *Store) SearchJobs(ctx context.Context, p SearchParams) (SearchResult, e
 	// it, rows with equal dates can swap between requests, and paging would
 	// show some jobs twice and skip others.
 	order := "posted_at DESC NULLS LAST, id DESC"
-	if p.Sort == SortRelevance && rank != "" {
-		order = rank + " DESC, " + order
+	if p.Sort == SortRelevance && f.rank != "" {
+		order = f.rank + " DESC, " + order
 	}
 
 	query := fmt.Sprintf("SELECT %s FROM jobs %s ORDER BY %s LIMIT %s OFFSET %s",
-		jobColumns, where, order, arg(p.Limit), arg(p.Offset))
+		jobColumns, f.where, order, f.arg(p.Limit), f.arg(p.Offset))
 
-	rows, err := s.pool.Query(ctx, query, args...)
+	rows, err := s.pool.Query(ctx, query, f.args...)
 	if err != nil {
 		return res, fmt.Errorf("search jobs: %w", err)
 	}

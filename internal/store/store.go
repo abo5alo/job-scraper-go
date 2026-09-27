@@ -7,6 +7,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"slices"
 	"sort"
 	"time"
 
@@ -129,9 +130,9 @@ func (s *Store) UpsertJobs(ctx context.Context, jobs []job.Job, seenAt time.Time
 	const q = `
 		INSERT INTO jobs (
 			source, external_id, board, title, company, location, country, remote,
-			seniority, url, description, tags, salary_min, salary_max,
+			seniority, url, description, tags, skills, salary_min, salary_max,
 			salary_currency, posted_at, last_seen_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		ON CONFLICT (source, external_id) DO UPDATE SET
 			board           = EXCLUDED.board,
 			title           = EXCLUDED.title,
@@ -143,6 +144,7 @@ func (s *Store) UpsertJobs(ctx context.Context, jobs []job.Job, seenAt time.Time
 			url             = EXCLUDED.url,
 			description     = EXCLUDED.description,
 			tags            = EXCLUDED.tags,
+			skills          = EXCLUDED.skills,
 			salary_min      = EXCLUDED.salary_min,
 			salary_max      = EXCLUDED.salary_max,
 			salary_currency = EXCLUDED.salary_currency,
@@ -152,13 +154,9 @@ func (s *Store) UpsertJobs(ctx context.Context, jobs []job.Job, seenAt time.Time
 
 	batch := &pgx.Batch{}
 	for _, j := range jobs {
-		tags := j.Tags
-		if tags == nil {
-			tags = []string{} // column is NOT NULL
-		}
 		batch.Queue(q,
 			j.Source, j.ExternalID, j.Board, j.Title, j.Company, j.Location, j.Country, j.Remote,
-			string(j.Seniority), j.URL, j.Description, tags, j.SalaryMin, j.SalaryMax,
+			string(j.Seniority), j.URL, j.Description, notNil(j.Tags), notNil(j.Skills), j.SalaryMin, j.SalaryMax,
 			j.SalaryCurrency, j.PostedAt, seenAt,
 		)
 	}
@@ -194,4 +192,49 @@ func (s *Store) CloseRemovedBoards(ctx context.Context, configured []string, now
 		return 0, fmt.Errorf("close removed boards: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// Renormalize runs job.Normalize again on every stored job and saves the
+// fields it changes: level, country, company and skills. Detection rules improve over time, and this applies a
+// new rule to existing jobs without re-scraping every source. It returns how
+// many jobs changed.
+func (s *Store) Renormalize(ctx context.Context) (int, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+jobColumns+" FROM jobs")
+	if err != nil {
+		return 0, fmt.Errorf("load jobs: %w", err)
+	}
+	jobs, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (JobRecord, error) {
+		return scanJob(row)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("load jobs: %w", err)
+	}
+
+	batch := &pgx.Batch{}
+	for _, r := range jobs {
+		j := r.Job
+		j.Normalize()
+		if j.Seniority == r.Seniority && j.Country == r.Country && j.Company == r.Company &&
+			slices.Equal(j.Skills, r.Skills) {
+			continue
+		}
+		batch.Queue(`UPDATE jobs SET seniority = $2, country = $3, company = $4, skills = $5 WHERE id = $1`,
+			r.ID, string(j.Seniority), j.Country, j.Company, notNil(j.Skills))
+	}
+	if batch.Len() == 0 {
+		return 0, nil
+	}
+	if err := s.pool.SendBatch(ctx, batch).Close(); err != nil {
+		return 0, fmt.Errorf("save jobs: %w", err)
+	}
+	return batch.Len(), nil
+}
+
+// notNil turns a nil slice into an empty one. pgx sends nil as SQL NULL, and
+// the array columns are NOT NULL.
+func notNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

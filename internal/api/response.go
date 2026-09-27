@@ -1,8 +1,10 @@
 package api
 
 import (
+	"math"
 	"time"
 
+	"job-scraper-go/internal/job"
 	"job-scraper-go/internal/store"
 )
 
@@ -29,6 +31,7 @@ type jobResponse struct {
 	Source      string          `json:"source"`
 	Salary      *salaryResponse `json:"salary,omitempty"`
 	Tags        []string        `json:"tags,omitempty"`
+	Skills      []string        `json:"skills,omitempty"`
 	Description string          `json:"description,omitempty"`
 	PostedAt    *time.Time      `json:"posted_at,omitempty"`
 	FirstSeenAt time.Time       `json:"first_seen_at"`
@@ -57,6 +60,7 @@ func toJobResponse(j store.JobRecord, maxDesc int) jobResponse {
 		URL:         j.URL,
 		Source:      j.Source,
 		Tags:        j.Tags,
+		Skills:      j.Skills,
 		Description: j.Description,
 		PostedAt:    j.PostedAt,
 		FirstSeenAt: j.FirstSeenAt,
@@ -79,4 +83,63 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(runes[:n]) + "…"
+}
+
+type statsResponse struct {
+	Total        int             `json:"total"`
+	Levels       []levelCount    `json:"levels"`
+	TopCompanies []companyCount  `json:"top_companies"`
+	TopSkills    []skillResponse `json:"top_skills"`
+}
+
+type levelCount struct {
+	Level string `json:"level"`
+	Count int    `json:"count"`
+}
+
+type companyCount struct {
+	Company string `json:"company"`
+	Count   int    `json:"count"`
+}
+
+type skillResponse struct {
+	Skill    string `json:"skill"`
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+	// Share is the fraction of matching jobs that mention the skill, which
+	// reads better than a raw count: "40% of these jobs ask for SQL".
+	Share float64 `json:"share"`
+}
+
+func toStatsResponse(st store.Stats) statsResponse {
+	r := statsResponse{
+		Total:        st.Total,
+		Levels:       make([]levelCount, 0, len(job.Seniorities)),
+		TopCompanies: make([]companyCount, 0, len(st.Companies)),
+		TopSkills:    make([]skillResponse, 0, len(st.Skills)),
+	}
+
+	// Every level, in order from intern to executive, including the ones
+	// with no jobs. A client drawing a chart gets the same axis every time.
+	counts := make(map[string]int, len(st.Levels))
+	for _, l := range st.Levels {
+		counts[l.Name] = l.Count
+	}
+	for _, level := range job.Seniorities {
+		r.Levels = append(r.Levels, levelCount{string(level), counts[string(level)]})
+	}
+
+	for _, c := range st.Companies {
+		r.TopCompanies = append(r.TopCompanies, companyCount{c.Name, c.Count})
+	}
+	for _, s := range st.Skills {
+		skill, _ := job.LookupSkill(s.Name)
+		r.TopSkills = append(r.TopSkills, skillResponse{
+			Skill:    s.Name,
+			Category: skill.Category,
+			Count:    s.Count,
+			Share:    math.Round(float64(s.Count)/float64(max(st.Total, 1))*1000) / 1000,
+		})
+	}
+	return r
 }

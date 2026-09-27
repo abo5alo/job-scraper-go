@@ -35,12 +35,20 @@
           <option value="executive">Director / Executive</option>
         </select>
         <label class="check"><input id="remote" name="remote" type="checkbox" value="true"> Remote only</label>
+        <!-- Set by clicking a skill below; shown as a removable chip. -->
+        <input id="skill" name="skill" type="hidden">
+        <button id="skill-chip" class="skill-chip" type="button" hidden></button>
       </div>
     </div>
   </header>
 
   <main class="wrap">
     <p id="status" class="status" aria-live="polite"></p>
+    <section id="insights" class="insights" aria-label="About these jobs" hidden>
+      <h2>Skills these jobs ask for</h2>
+      <ul id="top-skills" class="top-skills"></ul>
+      <p id="top-companies" class="top-companies"></p>
+    </section>
     <ol id="results" class="results"></ol>
     <nav id="pager" class="pager" hidden>
       <button id="prev" type="button">← Previous</button>

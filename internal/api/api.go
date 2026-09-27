@@ -3,6 +3,7 @@
 //	GET /            the search page
 //	GET /jobs        search and filter open jobs
 //	GET /jobs/{id}   one job, with its full description
+//	GET /stats       levels, top companies and top skills for a search
 //	GET /countries   open job counts per country
 //	GET /healthz     liveness check, including the database
 package api
@@ -26,6 +27,7 @@ import (
 type JobStore interface {
 	SearchJobs(ctx context.Context, p store.SearchParams) (store.SearchResult, error)
 	GetJob(ctx context.Context, id int64) (store.JobRecord, error)
+	Stats(ctx context.Context, p store.SearchParams, top int) (store.Stats, error)
 	CountryCounts(ctx context.Context, postedSince time.Time) ([]store.CountryCount, error)
 	Ping(ctx context.Context) error
 }
@@ -60,6 +62,7 @@ func NewHandler(st JobStore, log *slog.Logger, opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /jobs", s.searchJobs)
 	mux.HandleFunc("GET /jobs/{id}", s.getJob)
+	mux.HandleFunc("GET /stats", s.stats)
 	mux.HandleFunc("GET /countries", s.countries)
 	mux.HandleFunc("GET /healthz", s.health)
 	// Everything else is the search page and its files.
@@ -113,6 +116,28 @@ func (s *server) getJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toJobResponse(j, 0))
+}
+
+// statsTop is how many companies and skills /stats returns.
+const statsTop = 15
+
+// stats takes the same filters as /jobs and describes the matching jobs as a
+// whole: how they split by level, who's hiring most, and which skills they
+// ask for. Paging and sort params are accepted but don't apply.
+func (s *server) stats(w http.ResponseWriter, r *http.Request) {
+	params, _, err := parseSearchParams(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	params.PostedSince = oldestPostDate()
+
+	st, err := s.store.Stats(r.Context(), params, statsTop)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toStatsResponse(st))
 }
 
 func (s *server) countries(w http.ResponseWriter, r *http.Request) {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -179,5 +180,87 @@ func TestSearchEscapesLikeWildcards(t *testing.T) {
 	res, err := s.SearchJobs(ctx, SearchParams{Company: "%", Limit: 10})
 	if err != nil || res.Total != 0 {
 		t.Errorf("company=%%: total=%d err=%v, want 0", res.Total, err)
+	}
+}
+
+func TestStatsAndSkillFilter(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	jobs := []job.Job{
+		testJob("1", "Senior Backend Engineer", "AE", job.SenioritySenior),
+		testJob("2", "Backend Engineer", "AE", job.SeniorityMid),
+		testJob("3", "Data Analyst", "SA", job.SeniorityMid),
+	}
+	jobs[0].Skills = []string{"Go", "SQL"}
+	jobs[1].Skills = []string{"Python", "SQL"}
+	jobs[2].Skills = []string{"SQL", "Excel"}
+	jobs[2].Company = "Tamara"
+	if err := s.UpsertJobs(ctx, jobs, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := s.Stats(ctx, SearchParams{}, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Total != 3 {
+		t.Errorf("total = %d, want 3", st.Total)
+	}
+	// Top 2 only; ties are broken by name so the order is stable.
+	if want := []NameCount{{"SQL", 3}, {"Excel", 1}}; !slices.Equal(st.Skills, want) {
+		t.Errorf("skills = %v, want %v", st.Skills, want)
+	}
+	if want := []NameCount{{"Acme", 2}, {"Tamara", 1}}; !slices.Equal(st.Companies, want) {
+		t.Errorf("companies = %v, want %v", st.Companies, want)
+	}
+	if len(st.Levels) != 2 {
+		t.Errorf("levels = %v, want mid and senior", st.Levels)
+	}
+
+	// Stats follow the same filters as search.
+	st, err = s.Stats(ctx, SearchParams{Countries: []string{"AE"}}, 10)
+	if err != nil || st.Total != 2 || st.Skills[0] != (NameCount{"SQL", 2}) {
+		t.Errorf("country=AE stats = %+v, %v", st, err)
+	}
+
+	// The skill filter requires every listed skill.
+	res, err := s.SearchJobs(ctx, SearchParams{Skills: []string{"SQL", "Python"}, Limit: 10})
+	if err != nil || res.Total != 1 || res.Jobs[0].ExternalID != "2" {
+		t.Errorf("skills=SQL,Python: %+v, %v", res, err)
+	}
+}
+
+func TestRenormalize(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// Saved before skill detection existed: no skills, and a level that the
+	// title rules now say is wrong.
+	j := testJob("1", "Senior Python Developer", "AE", job.SeniorityMid)
+	j.Company = "Company" // a placeholder, which Normalize now hides
+	if err := s.UpsertJobs(ctx, []job.Job{j}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.Renormalize(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("Renormalize = %d, %v; want 1 changed", n, err)
+	}
+	res, _ := s.SearchJobs(ctx, SearchParams{Limit: 10})
+	if got := res.Jobs[0]; got.Seniority != job.SenioritySenior || got.Company != "" ||
+		!slices.Equal(got.Skills, []string{"Python"}) {
+		t.Errorf("after renormalize: level=%q company=%q skills=%v", got.Seniority, got.Company, got.Skills)
+	}
+
+	// Jobs with a hidden employer don't count as a company in stats.
+	st, err := s.Stats(ctx, SearchParams{}, 10)
+	if err != nil || st.Total != 1 || len(st.Companies) != 0 {
+		t.Errorf("stats = %+v, %v; want 1 job and no companies", st, err)
+	}
+
+	// Running it again changes nothing.
+	if n, err := s.Renormalize(ctx); err != nil || n != 0 {
+		t.Errorf("second Renormalize = %d, %v; want 0", n, err)
 	}
 }

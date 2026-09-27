@@ -15,8 +15,13 @@ a search page.
   search (one per country), company job boards on 5 different applicant
   tracking systems, and the Remote OK API. One scrape takes about 6 minutes,
   and that's deliberate: the scrapers are rate limited per host.
-- **Full-text search** with filters for country, city, seniority, company and
-  remote work, built on Postgres, with no separate search engine.
+- **Full-text search** with filters for country, city, seniority, company,
+  skill and remote work, built on Postgres, with no separate search engine.
+- **Market insights for any search:** which skills the matching jobs ask
+  for, who's hiring most, and how they split by seniority. Skills are
+  detected from ~55 patterns tuned against real postings, including business
+  tools, certifications and spoken languages. English and Arabic are among
+  the most requested skills in the region.
 - **Knows when a job closes.** Company feeds list every open job, so one that
   disappears has been filled. Closed jobs stay in the database for history
   but drop out of search, and so do postings older than 3 months.
@@ -101,6 +106,7 @@ its default command, and the scraper runs once and exits.
 | `country` | `EG,SA` or `saudi arabia` | Codes or names |
 | `location` | `riyadh` | Substring of the location text |
 | `company` | `careem` | Substring of the company name |
+| `skill` | `python,sql` | Jobs that ask for all of these skills |
 | `remote` | `true` | |
 | `include_closed` | `true` | Also return jobs that have been filled |
 | `sort` | `newest` | `relevance` (default when `q` is set) or `newest` |
@@ -133,6 +139,42 @@ curl "localhost:8080/jobs?q=backend&country=EG&level=senior"
   ]
 }
 ```
+
+### `GET /stats`: insights about a search
+
+Takes the same filters as `/jobs` and describes all the matching jobs, not
+just one page. `share` is the fraction of those jobs that mention a skill.
+
+```sh
+curl "localhost:8080/stats?q=engineer&country=EG"
+```
+
+```json
+{
+  "total": 481,
+  "levels": [
+    { "level": "intern", "count": 7 },
+    { "level": "junior", "count": 16 },
+    { "level": "mid", "count": 270 },
+    { "level": "senior", "count": 142 },
+    { "level": "lead", "count": 29 },
+    { "level": "executive", "count": 17 }
+  ],
+  "top_companies": [
+    { "company": "SSC HR Solutions", "count": 60 },
+    { "company": "Advansys", "count": 24 }
+  ],
+  "top_skills": [
+    { "skill": "English", "category": "spoken language", "count": 135, "share": 0.281 },
+    { "skill": "Python", "category": "programming language", "count": 90, "share": 0.187 },
+    { "skill": "SQL", "category": "programming language", "count": 73, "share": 0.152 }
+  ]
+}
+```
+
+Levels always come back in order with zeros included, so a chart gets the
+same axis every time. The four counts run as one batch: a single round trip
+to the database.
 
 Other endpoints:
 
@@ -211,6 +253,11 @@ needs, without running Elasticsearch next to the database.
 only as query parameters, and `LIKE` wildcards in input are escaped. All
 jobs from a source are saved in one batched round trip.
 
+**Detection rules can be re-applied.** Level, country, skills and
+placeholder companies are all derived from the scraped text, and the rules
+keep improving. `go run ./cmd/scraper -renormalize` re-runs them over every
+stored job and saves what changed, without re-scraping any source.
+
 **A protected API.** Each client IP gets its own token bucket (bursts
 allowed, sustained rate capped), and idle buckets are swept so memory
 doesn't grow forever. `X-Forwarded-For` is deliberately ignored, because any
@@ -238,6 +285,9 @@ by a test:
 | Namshi still lists jobs posted in 2017 | Search hides postings older than 3 months |
 | "CEO Office Manager" was classified as an executive | Phrases that contain a level word without meaning that level are removed before matching |
 | Workable answered with `Retry-After: 86205`, a daily quota, and the client retried after 60 seconds anyway | Requests asked to wait longer than a minute now fail immediately |
+| "Go" means the language in "Python, Go, Rust" but not in "Go-Live", "Go-to-Market" or "Go the extra mile" | Go only counts inside a list of technologies or after "in"/"with"; the test cases are phrases from real postings |
+| "Excel in a fast-paced team" isn't a spreadsheet skill, and "react quickly" isn't React | Verb phrases are removed before matching, and words with an everyday meaning must be capitalized |
+| 361 unrelated Egyptian jobs all listed their employer as "Company" | Placeholder names are stored as unknown, so they don't top the "who's hiring" list |
 
 ## Testing
 
@@ -266,12 +316,12 @@ TEST_DATABASE_URL="postgres://jobs:jobs@localhost:5432/jobs_test?sslmode=disable
 cmd/scraper/                     collect jobs from every source once
 cmd/api/                         HTTP server: REST API and search page
 sources.yaml                     which countries and companies to scrape
-internal/job/                    the unified Job type, seniority and country detection
+internal/job/                    the unified Job type, seniority, country and skill detection
 internal/scraper/                Scraper interface, concurrent runner, rate-limited HTTP client
 internal/scraper/ats/            Greenhouse, Ashby, Workable, SmartRecruiters, Recruitee
 internal/scraper/workablesearch/ Workable's cross-company job search
 internal/scraper/remoteok/       Remote OK API
-internal/store/                  PostgreSQL: migrations, upserts, search
+internal/store/                  PostgreSQL: migrations, upserts, search, stats
 internal/api/                    handlers, validation, rate limiting, logging
 internal/web/                    the search page (embedded HTML, CSS, JS)
 ```
@@ -281,7 +331,8 @@ internal/web/                    the search page (embedded HTML, CSS, JS)
 - [ ] Fit the Workable searches within its daily request quota (larger pages, or spreading countries across days)
 - [ ] Run the scraper on a daily schedule
 - [ ] Workday-hosted career sites, for large employers like airlines, banks and energy companies
-- [ ] Analytics endpoints: in-demand skills, salary ranges, how long jobs stay open
+- [x] Insights for any search: in-demand skills, top hiring companies, seniority split
+- [ ] How long jobs stay open (needs a few weeks of daily scrapes first)
 - [x] CI with GitHub Actions
 - [x] Dockerfile for the app
 - [ ] Deploy a public demo

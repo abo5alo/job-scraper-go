@@ -190,6 +190,67 @@ a:focus-visible {
   font-weight: 500;
 }
 
+.tag.skill {
+  font-weight: 500;
+}
+
+/* Skills and top hirers for the current search */
+
+.insights {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 12px;
+}
+
+.insights h2 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.top-skills {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.top-skills button,
+.skill-chip {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.top-skills button:hover { border-color: var(--accent); }
+
+.top-skills .share {
+  color: var(--muted);
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.skill-chip {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+
+.top-companies {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .desc {
   margin: 12px 0;
   color: var(--muted);

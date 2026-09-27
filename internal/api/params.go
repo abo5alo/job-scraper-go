@@ -51,6 +51,15 @@ func parseSearchParams(v url.Values) (p store.SearchParams, page int, err error)
 		p.Countries = append(p.Countries, code)
 	}
 
+	// Skills use the detector's canonical names, so "python" becomes "Python".
+	for _, name := range splitList(v.Get("skill")) {
+		s, ok := job.LookupSkill(name)
+		if !ok {
+			return p, 0, fmt.Errorf("unknown skill %q; GET /stats lists the most common ones", name)
+		}
+		p.Skills = append(p.Skills, s.Name)
+	}
+
 	if s := v.Get("remote"); s != "" {
 		b, err := strconv.ParseBool(s)
 		if err != nil {

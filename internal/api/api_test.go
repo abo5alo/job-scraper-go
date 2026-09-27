@@ -41,6 +41,16 @@ func (f *fakeStore) CountryCounts(context.Context, time.Time) ([]store.CountryCo
 	return []store.CountryCount{{Code: "SA", Count: 76}}, nil
 }
 
+func (f *fakeStore) Stats(_ context.Context, p store.SearchParams, _ int) (store.Stats, error) {
+	f.gotParams = p
+	return store.Stats{
+		Total:     10,
+		Levels:    []store.NameCount{{Name: "senior", Count: 4}, {Name: "mid", Count: 6}},
+		Companies: []store.NameCount{{Name: "Careem", Count: 3}},
+		Skills:    []store.NameCount{{Name: "SQL", Count: 4}, {Name: "Arabic", Count: 1}},
+	}, nil
+}
+
 func (f *fakeStore) Ping(context.Context) error { return nil }
 
 func TestSearchPage(t *testing.T) {
@@ -135,6 +145,7 @@ func TestSearchJobsValidation(t *testing.T) {
 		"page=0",
 		"limit=1000",
 		"sort=salary",
+		"skill=cobol",
 		"q=" + strings.Repeat("a", maxQueryLen+1),
 	}
 	for _, q := range bad {
@@ -142,6 +153,40 @@ func TestSearchJobsValidation(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("?%s: status = %d, want 400", q, rec.Code)
 		}
+	}
+}
+
+func TestStats(t *testing.T) {
+	st := &fakeStore{}
+	rec := get(t, newTestHandler(st), "/stats?country=AE&skill=sql,python")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+
+	// Same filters as /jobs, with skill names made canonical.
+	p := st.gotParams
+	if !slices.Equal(p.Countries, []string{"AE"}) || !slices.Equal(p.Skills, []string{"SQL", "Python"}) || p.PostedSince.IsZero() {
+		t.Errorf("params = %+v", p)
+	}
+
+	var body statsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	// All six levels in order, zeros included.
+	if len(body.Levels) != 6 || body.Levels[0] != (levelCount{"intern", 0}) || body.Levels[3] != (levelCount{"senior", 4}) {
+		t.Errorf("levels = %+v", body.Levels)
+	}
+	want := skillResponse{Skill: "SQL", Category: "programming language", Count: 4, Share: 0.4}
+	if len(body.TopSkills) != 2 || body.TopSkills[0] != want {
+		t.Errorf("top_skills = %+v, want first %+v", body.TopSkills, want)
+	}
+	if len(body.TopCompanies) != 1 || body.TopCompanies[0].Company != "Careem" {
+		t.Errorf("top_companies = %+v", body.TopCompanies)
+	}
+
+	if rec := get(t, newTestHandler(st), "/stats?level=wizard"); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad level: status = %d, want 400", rec.Code)
 	}
 }
 

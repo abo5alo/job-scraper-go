@@ -1,6 +1,9 @@
 package job
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestSeniorityFromTitle(t *testing.T) {
 	tests := []struct {
@@ -103,5 +106,56 @@ func TestNormalize(t *testing.T) {
 	j.Normalize()
 	if j.Seniority != SeniorityMid || j.Country != "EG" {
 		t.Errorf("got seniority=%q country=%q, want mid/EG", j.Seniority, j.Country)
+	}
+}
+
+func TestSkillsFromText(t *testing.T) {
+	tests := []struct {
+		text string
+		want []string
+	}{
+		// Phrases taken from real postings.
+		{"Comfortable in Go, TypeScript, GraphQL, Postgres", []string{"TypeScript", "Go", "PostgreSQL"}},
+		{"distributed systems written in Go. You will report", []string{"Go"}},
+		{"automation skills (Python, Bash, Go)", []string{"Python", "Go"}},
+		{"NodeJS, Go-Lang, and/or Python a plus", []string{"Python", "Go", "Node.js"}},
+		{"UAT, Go-Live & Post-Go-Live Stabilization", nil},
+		{"Go-To-Market Specialist", nil},
+		{"Go the extra mile to meet sales quotas. Go beyond Excel", []string{"Excel"}},
+		{"Excel in a fast-paced team", nil},
+		{"Advanced MS Excel and Microsoft Office", []string{"Excel", "Microsoft Office"}},
+		{"Swift/SwiftUI for our iOS app", []string{"Swift"}},
+		{"ensuring swift time-to-value", nil},
+		{"React and React Native; able to react quickly", []string{"React"}},
+		{"Java 8 and Spring Boot", []string{"Java", "Spring"}},
+		{"JavaScript only", []string{"JavaScript"}},
+		{"ASP.NET Core and C#; see example.net", []string{"C#", ".NET"}},
+		{"Fluent in Arabic and English", []string{"English", "Arabic"}},
+		{"ACCA or CPA qualified, IFRS knowledge", []string{"IFRS", "ACCA"}},
+		{"Accountant", nil},
+	}
+	for _, tt := range tests {
+		if got := SkillsFromText(tt.text); !slices.Equal(got, tt.want) {
+			t.Errorf("SkillsFromText(%q) = %q, want %q", tt.text, got, tt.want)
+		}
+	}
+}
+
+func TestLookupSkill(t *testing.T) {
+	if s, ok := LookupSkill(" arabic "); !ok || s.Name != "Arabic" || s.Category != CategorySpoken {
+		t.Errorf("LookupSkill(arabic) = %+v, %v", s, ok)
+	}
+	if _, ok := LookupSkill("Cobol"); ok {
+		t.Error("LookupSkill(Cobol) found a skill, want none")
+	}
+}
+
+func TestNormalizeHidesPlaceholderCompany(t *testing.T) {
+	for name, want := range map[string]string{"Company": "", " confidential ": "", "Careem": "Careem"} {
+		j := Job{Company: name}
+		j.Normalize()
+		if j.Company != want {
+			t.Errorf("company %q normalized to %q, want %q", name, j.Company, want)
+		}
 	}
 }
