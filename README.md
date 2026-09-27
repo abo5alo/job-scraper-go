@@ -1,5 +1,7 @@
 # job-scraper-go
 
+[![CI](https://github.com/abo5alo/job-scraper-go/actions/workflows/ci.yml/badge.svg)](https://github.com/abo5alo/job-scraper-go/actions/workflows/ci.yml)
+
 A job search platform for the Middle East, written in Go. It collects open
 positions straight from companies' own hiring systems, normalizes them into
 one schema, stores them in PostgreSQL, and serves them through a REST API and
@@ -232,6 +234,10 @@ by a test:
 go test ./...
 ```
 
+GitHub Actions runs formatting checks, `go vet`, and the full test suite
+with the race detector on every push, against a real Postgres
+([workflow](.github/workflows/ci.yml)).
+
 Unit tests need no network or database. Scrapers run against local fake
 servers that serve trimmed copies of real responses, and the API handlers
 run against a fake store.
@@ -265,7 +271,8 @@ internal/web/                    the search page (embedded HTML, CSS, JS)
 - [ ] Run the scraper on a daily schedule
 - [ ] Workday-hosted career sites, for large employers like airlines, banks and energy companies
 - [ ] Analytics endpoints: in-demand skills, salary ranges, how long jobs stay open
-- [ ] Dockerfile for the app and CI with GitHub Actions
+- [x] CI with GitHub Actions
+- [ ] Dockerfile for the app
 - [ ] Deploy a public demo
 
 ## Data sources

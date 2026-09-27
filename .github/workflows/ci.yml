@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # A real Postgres for the store's integration tests, the same version as
+    # docker-compose.yml. GitHub starts it before the steps run and waits for
+    # the health check to pass.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: jobs
+          POSTGRES_PASSWORD: jobs
+          POSTGRES_DB: jobs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jobs -d jobs_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod # one source of truth for the Go version
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      # -race catches data races between goroutines, which matter here: the
+      # scrapers share one HTTP client and run concurrently.
+      - name: Test
+        env:
+          TEST_DATABASE_URL: postgres://jobs:jobs@localhost:5432/jobs_test?sslmode=disable
+        run: go test -race -count=1 ./...
