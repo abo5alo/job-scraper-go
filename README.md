@@ -75,6 +75,51 @@ database on a schedule; the API only reads it. Searching never waits on a
 job site, and our traffic to those sites doesn't grow with the number of
 users.
 
+## Project layout
+
+```
+cmd/scraper/                     collect jobs from every source once
+cmd/api/                         HTTP server: REST API and search page
+sources.yaml                     which countries and companies to scrape
+internal/job/                    the unified Job type, seniority, country and skill detection
+internal/scraper/                Scraper interface, concurrent runner, rate-limited HTTP client, text cleanup
+internal/scraper/ats/            company job boards: Greenhouse, Ashby, Workable, SmartRecruiters, Recruitee
+internal/scraper/workablesearch/ Workable's cross-company job search, one country at a time
+internal/scraper/remoteok/       Remote OK API
+internal/store/                  PostgreSQL: migrations, upserts, search, stats
+internal/api/                    handlers, validation, rate limiting, logging
+internal/web/                    the search page (embedded HTML, CSS, JS)
+```
+
+Sources are grouped by what you configure to add more of them:
+
+- **`ats/`** holds one file per applicant tracking system. Each company in
+  `sources.yaml` names its system and account, and gets its own scraper.
+- **`workablesearch/`** is one scraper per country. It's Workable's public
+  job search across every company that hires through Workable, which is why
+  Workable appears twice: `ats/workable.go` reads one company's board, this
+  searches them all.
+- **`remoteok/`** is a single fixed feed with nothing to configure.
+
+## Adding a source
+
+A new applicant tracking system, say Workday, is a new file in
+`internal/scraper/ats/`:
+
+1. Write a type that embeds `base` and implements `Scrape`, mapping the
+   system's JSON onto `job.Job`. `scraper.CleanText`, `HTMLToText` and
+   `ParseTime` handle the usual mess in raw fields, and `Normalize` fills in
+   country, seniority and skills afterwards.
+2. Add a `case` for it in `ats.New`.
+3. Add a test that runs it against a local fake server serving a trimmed
+   copy of a real response, like the other systems' tests in `ats_test.go`.
+4. List companies under it in `sources.yaml`.
+
+A source that isn't one company's board, like another cross-company search,
+gets its own package next to `workablesearch/` and is wired up in
+`cmd/scraper/main.go`. There it also declares whether its feed lists every
+open job. Only then is it safe to close the jobs it stops returning.
+
 ## Running locally
 
 With Docker only:
@@ -318,22 +363,6 @@ The store's integration tests run real SQL against a separate test database:
 ```sh
 docker compose exec postgres createdb -U jobs jobs_test
 TEST_DATABASE_URL="postgres://jobs:jobs@localhost:5432/jobs_test?sslmode=disable" go test ./internal/store
-```
-
-## Project layout
-
-```
-cmd/scraper/                     collect jobs from every source once
-cmd/api/                         HTTP server: REST API and search page
-sources.yaml                     which countries and companies to scrape
-internal/job/                    the unified Job type, seniority, country and skill detection
-internal/scraper/                Scraper interface, concurrent runner, rate-limited HTTP client
-internal/scraper/ats/            Greenhouse, Ashby, Workable, SmartRecruiters, Recruitee
-internal/scraper/workablesearch/ Workable's cross-company job search
-internal/scraper/remoteok/       Remote OK API
-internal/store/                  PostgreSQL: migrations, upserts, search, stats
-internal/api/                    handlers, validation, rate limiting, logging
-internal/web/                    the search page (embedded HTML, CSS, JS)
 ```
 
 ## Roadmap
