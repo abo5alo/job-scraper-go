@@ -125,15 +125,15 @@ open job. Only then is it safe to close the jobs it stops returning.
 With Docker only:
 
 ```sh
-docker compose up -d --build        # start PostgreSQL and the API
-docker compose run --rm scraper     # collect jobs from every source (~6 minutes)
+docker compose up -d --build        # start PostgreSQL, the API and the daily scraper
+docker compose run --rm scraper     # collect jobs right now instead of waiting (~6 minutes)
 ```
 
 Or with Go 1.27+ for development, using Docker just for the database:
 
 ```sh
 docker compose up -d postgres       # start PostgreSQL
-go run ./cmd/scraper                # collect jobs from every source (~6 minutes)
+go run ./cmd/scraper                # collect jobs from every source once (~6 minutes)
 go run ./cmd/api                    # start the server
 ```
 
@@ -141,7 +141,12 @@ Then open **http://localhost:8080**.
 
 The [Dockerfile](Dockerfile) builds both programs into one small image (a
 multi-stage build onto distroless, running as a non-root user). The API is
-its default command, and the scraper runs once and exits.
+its default command.
+
+The scraper runs once and exits, unless it's given a time of day:
+`-daily-at 03:00` keeps it running and scrapes every day at 03:00 UTC.
+That's how the `scheduler` service in [docker-compose.yml](docker-compose.yml)
+runs it. A failed run is logged and the next day's still happens.
 
 | Variable | Default |
 |---|---|
@@ -368,7 +373,7 @@ TEST_DATABASE_URL="postgres://jobs:jobs@localhost:5432/jobs_test?sslmode=disable
 ## Roadmap
 
 - [ ] Fit the Workable searches within its daily request quota (larger pages, or spreading countries across days)
-- [ ] Run the scraper on a daily schedule
+- [x] Run the scraper on a daily schedule
 - [ ] Workday-hosted career sites, for large employers like airlines, banks and energy companies
 - [x] Insights for any search: in-demand skills, top hiring companies, seniority split
 - [ ] How long jobs stay open (needs a few weeks of daily scrapes first)

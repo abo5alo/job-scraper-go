@@ -27,7 +27,20 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Not started by "docker compose up". It runs once and exits:
+  # Scrapes every day at 03:00 UTC (06:00 in Riyadh, 07:00 in Dubai) and
+  # waits in between. Started by "docker compose up" with the API.
+  scheduler:
+    build: .
+    command: ["/app/scraper", "-daily-at", "03:00"]
+    environment:
+      DATABASE_URL: postgres://jobs:jobs@postgres:5432/jobs?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Not started by "docker compose up". It runs once and exits, for a scrape
+  # right now instead of at the next scheduled time:
   #   docker compose run --rm scraper
   scraper:
     build: .

@@ -1,8 +1,10 @@
-// Command scraper runs every job source once and saves the results.
+// Command scraper runs every job source and saves the results, either once
+// or every day at a set time.
 //
 //	go run ./cmd/scraper
+//	go run ./cmd/scraper -daily-at 03:00    # keep running, scrape daily at 03:00 UTC
 //	go run ./cmd/scraper -sources path/to/sources.yaml
-//	go run ./cmd/scraper -renormalize   # re-apply detection rules, no scraping
+//	go run ./cmd/scraper -renormalize       # re-apply detection rules, no scraping
 package main
 
 import (
@@ -25,13 +27,14 @@ import (
 func main() {
 	sourcesPath := flag.String("sources", "sources.yaml", "file listing the job sources to scrape")
 	renormalize := flag.Bool("renormalize", false, "re-detect level, country and skills for stored jobs instead of scraping")
+	dailyAt := flag.String("daily-at", "", "keep running and scrape every day at this UTC time, e.g. 03:00 (default: scrape once and exit)")
 	flag.Parse()
 
 	// slog gives structured key=value logs, which are much easier to search
 	// than free-form Printf output once the app runs in production.
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	if err := run(log, *sourcesPath, *renormalize); err != nil {
+	if err := run(log, *sourcesPath, *renormalize, *dailyAt); err != nil {
 		log.Error("scraper failed", "err", err)
 		os.Exit(1)
 	}
@@ -47,11 +50,21 @@ type source struct {
 	fullListing bool
 }
 
-func run(log *slog.Logger, sourcesPath string, renormalize bool) error {
+func run(log *slog.Logger, sourcesPath string, renormalize bool, dailyAt string) error {
 	// Ctrl+C, or SIGTERM from "docker stop", cancels ctx, which cancels
 	// in-flight HTTP requests and queries.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Check the schedule before connecting to anything, so a typo fails
+	// right away instead of after the first scrape.
+	var at timeOfDay
+	if dailyAt != "" {
+		var err error
+		if at, err = parseTimeOfDay(dailyAt); err != nil {
+			return err
+		}
+	}
 
 	boards, err := ats.LoadBoards(sourcesPath)
 	if err != nil {
@@ -102,6 +115,30 @@ func run(log *slog.Logger, sourcesPath string, renormalize bool) error {
 		sources = append(sources, source{s, true})
 	}
 
+	if dailyAt == "" {
+		return scrapeOnce(ctx, log, db, sources)
+	}
+
+	// Daily mode: a failed run is logged and the next one still happens.
+	// Sources fail for reasons that fix themselves (a site down for an
+	// hour, Workable's daily quota), and a crashed scheduler would stop
+	// collecting entirely.
+	for {
+		next := at.next(time.Now())
+		log.Info("next scrape scheduled", "at", next.Format(time.RFC3339))
+		if err := sleepUntil(ctx, next); err != nil {
+			log.Info("stopping scheduler")
+			return nil
+		}
+		if err := scrapeOnce(ctx, log, db, sources); err != nil {
+			log.Error("scrape run failed", "err", err)
+		}
+	}
+}
+
+// scrapeOnce runs every source once, saves what they found, and closes the
+// jobs that full-listing boards no longer list.
+func scrapeOnce(ctx context.Context, log *slog.Logger, db *store.Store, sources []source) error {
 	scrapers := make([]scraper.Scraper, len(sources))
 	configured := make([]string, len(sources))
 	for i, s := range sources {
@@ -144,6 +181,7 @@ func run(log *slog.Logger, sourcesPath string, renormalize bool) error {
 		totalJobs += len(r.Jobs)
 
 		var closed int64
+		var err error
 		if sources[i].fullListing {
 			if len(r.Jobs) == 0 {
 				// An empty feed usually means the site changed or broke, not
