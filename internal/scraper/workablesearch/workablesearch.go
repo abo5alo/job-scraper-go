@@ -137,12 +137,12 @@ func (s *Scraper) normalize(r searchJob) job.Job {
 		ExternalID:  "search:" + r.ID,
 		Title:       scraper.CleanText(r.Title),
 		Company:     scraper.CleanText(r.Company.Title),
-		Location:    joinNonEmpty(r.Location.City, r.Location.CountryName),
+		Location:    scraper.JoinNonEmpty(r.Location.City, r.Location.CountryName),
 		Country:     s.code,
 		Remote:      r.Workplace == "remote",
 		URL:         r.URL,
 		Description: scraper.HTMLToText(r.Description + " " + r.RequirementsSection),
-		PostedAt:    parseTime(r.Created),
+		PostedAt:    scraper.ParseTime(time.RFC3339, r.Created),
 	}
 }
 
@@ -161,23 +161,4 @@ func LoadCountries(path string) ([]string, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return file.WorkableSearch.Countries, nil
-}
-
-func parseTime(s string) *time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return nil
-	}
-	t = t.UTC()
-	return &t
-}
-
-func joinNonEmpty(parts ...string) string {
-	var out []string
-	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return strings.Join(out, ", ")
 }

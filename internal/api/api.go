@@ -81,6 +81,9 @@ func (s *server) searchJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params.PostedSince = oldestPostDate()
+	// One character more than the preview shows, so truncate can tell a
+	// description that was cut from one exactly that long.
+	params.DescriptionLen = listDescriptionLen + 1
 
 	res, err := s.store.SearchJobs(r.Context(), params)
 	if err != nil {

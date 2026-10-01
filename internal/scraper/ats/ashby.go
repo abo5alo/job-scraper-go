@@ -57,7 +57,7 @@ func (a *ashby) Scrape(ctx context.Context) ([]job.Job, error) {
 			Remote:      remote,
 			URL:         r.JobURL,
 			Description: strings.Join(strings.Fields(r.DescriptionPlain), " "),
-			PostedAt:    parseTime(time.RFC3339, r.PublishedAt),
+			PostedAt:    scraper.ParseTime(time.RFC3339, r.PublishedAt),
 		}
 		// Location is free text like "Cairo Office"; the address, when set,
 		// has the country as a proper field.

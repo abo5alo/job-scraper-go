@@ -2,6 +2,7 @@ package job
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -137,6 +138,47 @@ func TestSkillsFromText(t *testing.T) {
 	for _, tt := range tests {
 		if got := SkillsFromText(tt.text); !slices.Equal(got, tt.want) {
 			t.Errorf("SkillsFromText(%q) = %q, want %q", tt.text, got, tt.want)
+		}
+	}
+}
+
+// TestSkillKeywords checks that a skill's keywords never rule out text its
+// pattern matches. A pattern that gains a new alias needs a keyword for it,
+// or SkillsFromText silently stops finding it.
+func TestSkillKeywords(t *testing.T) {
+	// Every spelling the patterns accept, aliases included.
+	samples := []string{
+		"Python", "Java", "JavaScript", "TypeScript", "Golang", "Go-Lang", "Python, Go", "written in Go.",
+		"C#", "C++", "PHP", "Kotlin", "SwiftUI", "Rust", "SQL", "React.js", "React Native",
+		"AngularJS", "Vue.js", "NodeJS", "Node.js", "ASP.NET", " .NET", "Spring Boot", "Spring Framework",
+		"Django", "Laravel", "Flutter", "machine learning", "ML", "LLM", "LLMs", "large language models",
+		"PowerBI", "Power BI", "Tableau", "Postgres", "PostgreSQL", "Mongo", "MongoDB", "AWS",
+		"Amazon Web Services", "Azure", "GCP", "Google Cloud", "Docker", "Kubernetes", "K8s", "Terraform",
+		"Linux", "Excel", "MS Office", "Microsoft Office", "SAP", "Salesforce", "HubSpot", "Odoo", "CRM",
+		"Figma", "Photoshop", "Adobe Illustrator", "Adobe After Effects", "AutoCAD", "Revit", "Primavera",
+		"SEO", "Google Ads", "IFRS", "PMP", "ACCA", "CFA", "English", "Arabic", "French", "German",
+	}
+	for _, text := range samples {
+		matched := false
+		for _, s := range Skills {
+			if !s.re.MatchString(text) {
+				continue
+			}
+			matched = true
+			if !s.mentionedIn(strings.ToLower(text)) {
+				t.Errorf("%s: pattern matches %q but no keyword in %q does", s.Name, text, s.keywords)
+			}
+		}
+		if !matched {
+			t.Errorf("no skill pattern matches %q; the sample list is out of date", text)
+		}
+	}
+
+	for _, s := range Skills {
+		for _, k := range s.keywords {
+			if k != strings.ToLower(k) {
+				t.Errorf("%s: keyword %q must be lowercase", s.Name, k)
+			}
 		}
 	}
 }

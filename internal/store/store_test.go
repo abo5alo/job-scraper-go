@@ -183,6 +183,25 @@ func TestSearchEscapesLikeWildcards(t *testing.T) {
 	}
 }
 
+func TestSearchDescriptionLen(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	j := testJob("1", "Engineer", "AE", job.SeniorityMid)
+	j.Description = "مهندس برمجيات with a long description" // counted in characters, not bytes
+	if err := s.UpsertJobs(ctx, []job.Job{j}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := s.SearchJobs(ctx, SearchParams{Query: "engineer", DescriptionLen: 5, Limit: 10})
+	if err != nil || res.Total != 1 || res.Jobs[0].Description != "مهندس" {
+		t.Fatalf("DescriptionLen 5: %+v, %v; want the first 5 characters", res, err)
+	}
+	if res, _ := s.SearchJobs(ctx, SearchParams{Limit: 10}); res.Jobs[0].Description != j.Description {
+		t.Errorf("DescriptionLen 0: description = %q, want all of it", res.Jobs[0].Description)
+	}
+}
+
 func TestStatsAndSkillFilter(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

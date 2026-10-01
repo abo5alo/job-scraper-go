@@ -48,7 +48,7 @@ func (g *greenhouse) Scrape(ctx context.Context) ([]job.Job, error) {
 			// Greenhouse HTML-escapes its HTML ("&lt;p&gt;"), so it has to be
 			// unescaped once before the tags can be stripped.
 			Description: scraper.HTMLToText(html.UnescapeString(r.Content)),
-			PostedAt:    parseTime(time.RFC3339, r.FirstPublished, r.UpdatedAt),
+			PostedAt:    scraper.ParseTime(time.RFC3339, r.FirstPublished, r.UpdatedAt),
 		})
 	}
 	return jobs, nil

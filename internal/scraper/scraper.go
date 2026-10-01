@@ -7,9 +7,11 @@ import (
 	"context"
 	"html"
 	"strings"
+	"time"
 	"unicode/utf8"
 
-	"github.com/PuerkitoBio/goquery"
+	nethtml "golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	"job-scraper-go/internal/job"
 )
@@ -58,14 +60,55 @@ func FixMojibake(s string) string {
 
 // HTMLToText strips tags from an HTML fragment and collapses whitespace.
 func HTMLToText(fragment string) string {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(fragment))
+	doc, err := nethtml.Parse(strings.NewReader(fragment))
 	if err != nil {
 		return fragment
 	}
-	// Put a space between block elements so "<p>a</p><p>b</p>" becomes
-	// "a b" rather than "ab".
-	doc.Find("p, li, br, div, h1, h2, h3, h4").Each(func(_ int, s *goquery.Selection) {
-		s.AppendHtml(" ")
-	})
-	return strings.Join(strings.Fields(doc.Text()), " ")
+	var b strings.Builder
+	writeText(&b, doc)
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// blockElements end with a space, so "<p>a</p><p>b</p>" becomes "a b"
+// rather than "ab". Inline elements don't: "Sen<b>ior</b>" stays one word.
+var blockElements = map[atom.Atom]bool{
+	atom.P: true, atom.Li: true, atom.Br: true, atom.Div: true,
+	atom.H1: true, atom.H2: true, atom.H3: true, atom.H4: true,
+}
+
+// writeText writes the text inside n, in document order.
+func writeText(b *strings.Builder, n *nethtml.Node) {
+	if n.Type == nethtml.TextNode {
+		b.WriteString(n.Data)
+		return
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		writeText(b, c)
+	}
+	if n.Type == nethtml.ElementNode && blockElements[n.DataAtom] {
+		b.WriteByte(' ')
+	}
+}
+
+// ParseTime returns the first value that parses with layout, in UTC, or nil.
+// Feeds often have several date fields, some of them empty.
+func ParseTime(layout string, values ...string) *time.Time {
+	for _, v := range values {
+		if t, err := time.Parse(layout, strings.TrimSpace(v)); err == nil {
+			t = t.UTC()
+			return &t
+		}
+	}
+	return nil
+}
+
+// JoinNonEmpty joins the non-blank parts: ("Dubai", "", "UAE") -> "Dubai, UAE".
+func JoinNonEmpty(parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, ", ")
 }

@@ -48,13 +48,13 @@ func (w *workable) Scrape(ctx context.Context) ([]job.Job, error) {
 			ExternalID:  w.externalID(r.Shortcode),
 			Title:       scraper.CleanText(r.Title),
 			Company:     w.board.Company,
-			Location:    joinNonEmpty(r.City, r.Country),
+			Location:    scraper.JoinNonEmpty(r.City, r.Country),
 			Country:     country,
 			Remote:      r.Telecommuting,
 			Seniority:   job.SeniorityFromLabel(r.Experience),
 			URL:         r.URL,
 			Description: scraper.HTMLToText(r.Description),
-			PostedAt:    parseTime(time.DateOnly, r.PublishedOn),
+			PostedAt:    scraper.ParseTime(time.DateOnly, r.PublishedOn),
 		})
 	}
 	return jobs, nil

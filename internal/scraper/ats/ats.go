@@ -13,7 +13,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -100,27 +99,4 @@ func LoadBoards(path string) ([]Board, error) {
 
 func isRemote(location string) bool {
 	return strings.Contains(strings.ToLower(location), "remote")
-}
-
-// parseTime returns the first value that parses with layout, or nil. ATS
-// feeds often have several date fields, some of them empty.
-func parseTime(layout string, values ...string) *time.Time {
-	for _, v := range values {
-		if t, err := time.Parse(layout, strings.TrimSpace(v)); err == nil {
-			t = t.UTC()
-			return &t
-		}
-	}
-	return nil
-}
-
-// joinNonEmpty joins the non-blank parts: ("Dubai", "", "UAE") -> "Dubai, UAE".
-func joinNonEmpty(parts ...string) string {
-	var out []string
-	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return strings.Join(out, ", ")
 }

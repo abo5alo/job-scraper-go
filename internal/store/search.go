@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,6 +45,11 @@ type SearchParams struct {
 	Sort          string
 	Limit         int
 	Offset        int
+	// DescriptionLen loads at most this many characters of each job's
+	// description, 0 for all of it. A results list only shows the start,
+	// and descriptions run to many kilobytes: cutting them in the database
+	// keeps them from being read and sent over only to be thrown away.
+	DescriptionLen int
 }
 
 type SearchResult struct {
@@ -51,10 +57,16 @@ type SearchResult struct {
 	Jobs  []JobRecord
 }
 
-const jobColumns = `
+var jobColumns = jobColumnsWith("description")
+
+// jobColumnsWith lists the columns scanJob reads, with description being
+// the expression that loads the description.
+func jobColumnsWith(description string) string {
+	return `
 	id, source, external_id, board, title, company, location, country, remote,
-	seniority, url, description, tags, skills, tech, salary_min, salary_max, salary_currency,
+	seniority, url, ` + description + `, tags, skills, tech, salary_min, salary_max, salary_currency,
 	posted_at, first_seen_at, last_seen_at, closed_at`
+}
 
 func scanJob(row pgx.Row) (JobRecord, error) {
 	var r JobRecord
@@ -136,10 +148,11 @@ func buildFilter(p SearchParams) *filter {
 func (s *Store) SearchJobs(ctx context.Context, p SearchParams) (SearchResult, error) {
 	f := buildFilter(p)
 
-	var res SearchResult
-	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM jobs "+f.where, f.args...).Scan(&res.Total); err != nil {
-		return res, fmt.Errorf("count jobs: %w", err)
-	}
+	// The count and the page go to the database as one batch, so a search
+	// costs a single round trip. The count takes only the filter's
+	// parameters, so it gets a copy made before the page adds its own.
+	batch := &pgx.Batch{}
+	batch.Queue("SELECT count(*) FROM jobs "+f.where, slices.Clone(f.args)...)
 
 	// id is the final tiebreaker so the order is fully deterministic. Without
 	// it, rows with equal dates can swap between requests, and paging would
@@ -149,10 +162,21 @@ func (s *Store) SearchJobs(ctx context.Context, p SearchParams) (SearchResult, e
 		order = f.rank + " DESC, " + order
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM jobs %s ORDER BY %s LIMIT %s OFFSET %s",
-		jobColumns, f.where, order, f.arg(p.Limit), f.arg(p.Offset))
+	columns := jobColumns
+	if p.DescriptionLen > 0 {
+		columns = jobColumnsWith("left(description, " + f.arg(p.DescriptionLen) + ")")
+	}
+	batch.Queue(fmt.Sprintf("SELECT %s FROM jobs %s ORDER BY %s LIMIT %s OFFSET %s",
+		columns, f.where, order, f.arg(p.Limit), f.arg(p.Offset)), f.args...)
 
-	rows, err := s.pool.Query(ctx, query, f.args...)
+	br := s.pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	var res SearchResult
+	if err := br.QueryRow().Scan(&res.Total); err != nil {
+		return res, fmt.Errorf("count jobs: %w", err)
+	}
+	rows, err := br.Query()
 	if err != nil {
 		return res, fmt.Errorf("search jobs: %w", err)
 	}
@@ -162,7 +186,7 @@ func (s *Store) SearchJobs(ctx context.Context, p SearchParams) (SearchResult, e
 	if err != nil {
 		return res, fmt.Errorf("scan jobs: %w", err)
 	}
-	return res, nil
+	return res, br.Close()
 }
 
 type CountryCount struct {

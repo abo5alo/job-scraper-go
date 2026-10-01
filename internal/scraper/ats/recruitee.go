@@ -52,7 +52,7 @@ func (r *recruitee) Scrape(ctx context.Context) ([]job.Job, error) {
 			Seniority:   job.SeniorityFromLabel(o.ExperienceCode),
 			URL:         o.CareersURL,
 			Description: scraper.HTMLToText(o.Description + " " + o.Requirements),
-			PostedAt:    parseTime("2006-01-02 15:04:05 MST", o.PublishedAt),
+			PostedAt:    scraper.ParseTime("2006-01-02 15:04:05 MST", o.PublishedAt),
 		}
 
 		// Only keep yearly salaries. Mixing monthly and yearly figures in one

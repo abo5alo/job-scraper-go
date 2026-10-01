@@ -72,13 +72,13 @@ func (s *smartRecruiters) Scrape(ctx context.Context) ([]job.Job, error) {
 			ExternalID: s.externalID(p.ID),
 			Title:      scraper.CleanText(p.Name),
 			Company:    s.board.Company,
-			Location:   joinNonEmpty(strings.Split(p.Location.FullLocation, ",")...),
+			Location:   scraper.JoinNonEmpty(strings.Split(p.Location.FullLocation, ",")...),
 			Country:    p.Location.Country,
 			Remote:     p.Location.Remote,
 			Seniority:  job.SeniorityFromLabel(p.ExperienceLevel.ID),
 			// Fallback link in case the detail request below fails.
 			URL:      fmt.Sprintf("https://jobs.smartrecruiters.com/%s/%s", p.Company.Identifier, p.ID),
-			PostedAt: parseTime(time.RFC3339, p.ReleasedDate),
+			PostedAt: scraper.ParseTime(time.RFC3339, p.ReleasedDate),
 		}
 
 		var d srDetail
