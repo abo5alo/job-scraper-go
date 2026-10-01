@@ -1,0 +1,10 @@
+# SITE_ADDRESS is the server's name, e.g. 3-120-45-6.sslip.io. Caddy gets a
+# free HTTPS certificate for it and redirects plain HTTP to HTTPS.
+{$SITE_ADDRESS} {
+	encode gzip
+	reverse_proxy api:8080 {
+		# The API rate limits per visitor; without this every request would
+		# look like it came from Caddy. See CLIENT_IP_HEADER.
+		header_up X-Real-IP {remote_host}
+	}
+}

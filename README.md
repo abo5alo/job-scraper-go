@@ -152,6 +152,10 @@ runs it. A failed run is logged and the next day's still happens.
 |---|---|
 | `DATABASE_URL` | `postgres://jobs:jobs@localhost:5432/jobs?sslmode=disable` |
 | `ADDR` | `:8080` |
+| `CLIENT_IP_HEADER` | unset; behind a reverse proxy, the header it puts the client's IP in |
+
+To run it on a public server with HTTPS, see
+[Deploying to AWS](docs/deploy-aws.md).
 
 ## API
 

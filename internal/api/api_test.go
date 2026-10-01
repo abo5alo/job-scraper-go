@@ -240,3 +240,36 @@ func TestRateLimitPerIP(t *testing.T) {
 		t.Errorf("request from 10.0.0.2: status = %d, want 200", got)
 	}
 }
+
+func TestRateLimitBehindProxy(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	opts := Options{RequestsPerSecond: 0.001, Burst: 1}
+
+	// Every request arrives from the proxy's address; the header carries
+	// the real client.
+	request := func(h http.Handler, client string) int {
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		req.RemoteAddr = "172.18.0.5:40000"
+		req.Header.Set("X-Real-IP", client)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// Without ClientIPHeader the header is ignored, so a client can't dodge
+	// the limit by faking it: the second request shares the first's bucket.
+	h := NewHandler(&fakeStore{}, log, opts)
+	if a, b := request(h, "10.0.0.1"), request(h, "10.0.0.2"); a != 200 || b != 429 {
+		t.Errorf("header ignored: statuses = %d, %d, want 200, 429", a, b)
+	}
+
+	// With it, each client gets its own bucket.
+	opts.ClientIPHeader = "X-Real-IP"
+	h = NewHandler(&fakeStore{}, log, opts)
+	if a, b := request(h, "10.0.0.1"), request(h, "10.0.0.2"); a != 200 || b != 200 {
+		t.Errorf("header trusted: statuses = %d, %d, want 200, 200", a, b)
+	}
+	if got := request(h, "10.0.0.1"); got != 429 {
+		t.Errorf("second request from 10.0.0.1: status = %d, want 429", got)
+	}
+}

@@ -1,0 +1,54 @@
+# Changes for running on a public server, layered on docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# It needs a .env file next to it (see .env.example) with a database password
+# and the site's address. That .env also sets COMPOSE_FILE, so on the server
+# a plain "docker compose up -d --build" does the same. See docs/deploy-aws.md.
+# Compared to local development:
+#   - Nothing but Caddy is reachable from outside. Postgres and the API lose
+#     their published ports, so the database can't be reached at all and the
+#     API only through Caddy.
+#   - The database password comes from .env instead of being "jobs".
+#   - Caddy serves the site over HTTPS, with a certificate it gets and renews
+#     by itself, and tells the API each visitor's real IP for rate limiting.
+
+x-database-url: &database-url postgres://jobs:${DB_PASSWORD:?set DB_PASSWORD in .env}@postgres:5432/jobs?sslmode=disable
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    ports: !reset []
+
+  api:
+    environment:
+      DATABASE_URL: *database-url
+      # Caddy sets this header; the API is only reachable through Caddy.
+      CLIENT_IP_HEADER: X-Real-IP
+    ports: !reset []
+
+  scheduler:
+    environment:
+      DATABASE_URL: *database-url
+
+  scraper:
+    environment:
+      DATABASE_URL: *database-url
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates, so restarts don't request new ones
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  caddy_data:

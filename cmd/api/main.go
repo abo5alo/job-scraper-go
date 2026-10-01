@@ -45,8 +45,14 @@ func run(log *slog.Logger) error {
 
 	addr := envOr("ADDR", ":8080")
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: api.NewHandler(db, log, api.Options{RequestsPerSecond: 5, Burst: 20}),
+		Addr: addr,
+		Handler: api.NewHandler(db, log, api.Options{
+			RequestsPerSecond: 5,
+			Burst:             20,
+			// Behind a reverse proxy like Caddy, the header it passes the
+			// client's IP in. Never set it when the API is reachable directly.
+			ClientIPHeader: os.Getenv("CLIENT_IP_HEADER"),
+		}),
 		// Without these, a client that opens a connection and sends bytes
 		// very slowly can hold it open forever (a "slowloris" attack).
 		ReadHeaderTimeout: 5 * time.Second,

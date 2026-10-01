@@ -37,6 +37,10 @@ type Options struct {
 	// Per-client-IP rate limit for the whole API.
 	RequestsPerSecond float64
 	Burst             int
+	// ClientIPHeader is the header a reverse proxy in front of the API sets
+	// to the client's IP, e.g. "X-Real-IP". Empty means there's no proxy and
+	// the connection's address is the client. See clientIPFunc.
+	ClientIPHeader string
 }
 
 // maxJobAge hides postings older than about 3 months from search. Some
@@ -69,8 +73,9 @@ func NewHandler(st JobStore, log *slog.Logger, opts Options) http.Handler {
 	// Everything else is the search page and its files.
 	mux.Handle("GET /", web.Handler())
 
-	limited := newIPRateLimiter(opts.RequestsPerSecond, opts.Burst).middleware(mux)
-	return logRequests(log, limited)
+	clientIP := clientIPFunc(opts.ClientIPHeader)
+	limited := newIPRateLimiter(opts.RequestsPerSecond, opts.Burst, clientIP).middleware(mux)
+	return logRequests(log, clientIP, limited)
 }
 
 func (s *server) searchJobs(w http.ResponseWriter, r *http.Request) {

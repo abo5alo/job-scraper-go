@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,8 +17,9 @@ import (
 // capping the sustained rate, so one aggressive client can't starve the rest
 // or run up the database.
 type ipRateLimiter struct {
-	rps   rate.Limit
-	burst int
+	rps      rate.Limit
+	burst    int
+	clientIP func(*http.Request) string
 
 	mu          sync.Mutex
 	clients     map[string]*clientBucket
@@ -31,10 +33,11 @@ type clientBucket struct {
 
 const idleClientTTL = 3 * time.Minute
 
-func newIPRateLimiter(rps float64, burst int) *ipRateLimiter {
+func newIPRateLimiter(rps float64, burst int, clientIP func(*http.Request) string) *ipRateLimiter {
 	return &ipRateLimiter{
 		rps:         rate.Limit(rps),
 		burst:       burst,
+		clientIP:    clientIP,
 		clients:     make(map[string]*clientBucket),
 		lastCleanup: time.Now(),
 	}
@@ -68,7 +71,7 @@ func (l *ipRateLimiter) allow(ip string) bool {
 
 func (l *ipRateLimiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !l.allow(clientIP(r)) {
+		if !l.allow(l.clientIP(r)) {
 			w.Header().Set("Retry-After", "1")
 			writeError(w, http.StatusTooManyRequests, "rate limit exceeded, slow down")
 			return
@@ -77,21 +80,32 @@ func (l *ipRateLimiter) middleware(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP uses the TCP connection's address. It deliberately ignores the
-// X-Forwarded-For header: any client can set that header to anything, so
-// trusting it would let an attacker dodge the limit by sending a new fake IP
-// with every request. Behind a real load balancer, this should read the
-// header that load balancer sets, and only that one.
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+// clientIPFunc returns how to find a request's client IP. By default it's
+// the TCP connection's address. Headers like X-Forwarded-For are ignored on
+// purpose: any client can set them to anything, so trusting them would let
+// an attacker dodge the rate limit by sending a new fake IP every time.
+//
+// Behind a reverse proxy, though, every connection comes from the proxy,
+// and all clients would share one rate limit. Then header names the header
+// the proxy sets to the real client IP. Set it only when the proxy is the
+// sole way in, so no client can reach the API and set the header itself.
+func clientIPFunc(header string) func(*http.Request) string {
+	return func(r *http.Request) string {
+		if header != "" {
+			if ip := strings.TrimSpace(r.Header.Get(header)); ip != "" {
+				return ip
+			}
+		}
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			return r.RemoteAddr
+		}
+		return host
 	}
-	return host
 }
 
 // logRequests writes one structured log line per request.
-func logRequests(log *slog.Logger, next http.Handler) http.Handler {
+func logRequests(log *slog.Logger, clientIP func(*http.Request) string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
