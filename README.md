@@ -25,7 +25,7 @@ a search page.
   detected with patterns tuned against real postings, including business
   tools, certifications and spoken languages. English and Arabic are among
   the most requested skills in the region.
-- **Tech jobs by default, everything on request.** Each job is classified
+- **Every job, with tech jobs one click away.** Each job is classified
   as tech or not: clear titles decide ("Sales Engineer" and "Site Engineer"
   aren't tech, "Site Reliability Engineer" is), and vague ones like
   "Specialist" fall back to the skills the job asks for. Non-tech jobs stay
@@ -169,7 +169,7 @@ To run it on a public server with HTTPS, see
 | `location` | `riyadh` | Substring of the location text |
 | `company` | `careem` | Substring of the company name |
 | `skill` | `python,sql` | Jobs that ask for all of these skills |
-| `tech` | `true` | Only tech jobs (`false` for only non-tech). The search page sets it by default |
+| `tech` | `true` | Only tech jobs (`false` for only non-tech). The search page's "Tech jobs only" box |
 | `remote` | `true` | |
 | `include_closed` | `true` | Also return jobs that have been filled |
 | `sort` | `newest` | `relevance` (default when `q` is set) or `newest` |

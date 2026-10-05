@@ -45,10 +45,10 @@ function formParams() {
   return params;
 }
 
-// Tech-only is the default, so the address bar only mentions it when it's
-// off ("tech=all"). A plain link to the site shows tech jobs.
+// All jobs is the default; the address bar says "tech=true" when the box is
+// ticked. Older links that said "tech=all" still show all jobs.
 function techFromURL() {
-  return new URLSearchParams(location.search).get("tech") !== "all";
+  return new URLSearchParams(location.search).get("tech") === "true";
 }
 
 // Restore the form from the address bar, so a search can be shared or reloaded.
@@ -86,10 +86,7 @@ async function loadCountries() {
 async function search() {
   const params = formParams();
   if (page > 1) params.set("page", page);
-  const shown = new URLSearchParams(params);
-  if (techBox.checked) shown.delete("tech");
-  else shown.set("tech", "all");
-  history.replaceState(null, "", shown.size ? `?${shown}` : location.pathname);
+  history.replaceState(null, "", params.size ? `?${params}` : location.pathname);
 
   showSkillFilter();
   inFlight?.abort();
