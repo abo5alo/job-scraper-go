@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -22,6 +23,21 @@ import (
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	// LOG_FILE also appends the log to a file. Docker's own copy of a
+	// container's output is lost when the container is replaced, and this
+	// one keeps the request history that cmd/stats reports on. A file that
+	// can't be opened is a warning, not a reason to keep the site down.
+	if path := os.Getenv("LOG_FILE"); path != "" {
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			log.Warn("can't open log file; logging to stdout only", "err", err)
+		} else {
+			defer f.Close()
+			log = slog.New(slog.NewTextHandler(io.MultiWriter(os.Stdout, f), nil))
+		}
+	}
+
 	if err := run(log); err != nil {
 		log.Error("api failed", "err", err)
 		os.Exit(1)

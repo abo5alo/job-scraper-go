@@ -217,6 +217,32 @@ func TestGetJob(t *testing.T) {
 	}
 }
 
+func TestJobClick(t *testing.T) {
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	st := &fakeStore{result: store.SearchResult{Jobs: []store.JobRecord{{ID: 3, Job: job.Job{Title: "Data Analyst", Company: "Tamara"}}}}}
+	h := NewHandler(st, log, Options{RequestsPerSecond: 1000, Burst: 1000})
+
+	click := func(path string) int {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
+		return rec.Code
+	}
+
+	if code := click("/jobs/3/click"); code != http.StatusNoContent {
+		t.Errorf("click on job 3: status = %d, want 204", code)
+	}
+	if want := `msg="job click" id=3 title="Data Analyst" company=Tamara`; !strings.Contains(logs.String(), want) {
+		t.Errorf("log doesn't contain %q:\n%s", want, logs.String())
+	}
+	if code := click("/jobs/99/click"); code != http.StatusNotFound {
+		t.Errorf("click on a missing job: status = %d, want 404", code)
+	}
+	if code := click("/jobs/abc/click"); code != http.StatusBadRequest {
+		t.Errorf("click with a bad id: status = %d, want 400", code)
+	}
+}
+
 func TestRateLimitPerIP(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	h := NewHandler(&fakeStore{}, log, Options{RequestsPerSecond: 0.001, Burst: 2})

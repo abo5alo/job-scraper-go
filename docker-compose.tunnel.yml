@@ -1,0 +1,41 @@
+# Share the app from this computer through a free Cloudflare quick tunnel,
+# layered on docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.tunnel.yml logs tunnel
+#
+# The tunnel's log prints a public HTTPS link like
+# https://some-random-words.trycloudflare.com. Anyone with it can use the
+# site while this computer is on. No Cloudflare account or open router port
+# is needed: the tunnel connects out to Cloudflare, and visitors reach the
+# app through that connection. The link changes whenever the tunnel
+# restarts, and Cloudflare offers quick tunnels for testing and demos, with
+# no uptime guarantee.
+#
+# Compared to local development:
+#   - Postgres and the API lose their published ports. The tunnel is the only
+#     way in, which is what makes it safe for the API to trust the header
+#     below. The site is still at the tunnel link from this computer too.
+#   - The API reads each visitor's IP from CF-Connecting-IP, the header
+#     Cloudflare sets, so every visitor gets their own rate limit.
+
+services:
+  postgres:
+    ports: !reset []
+
+  api:
+    environment:
+      CLIENT_IP_HEADER: CF-Connecting-IP
+      # Keep the request log in ./logs on this computer, where it survives
+      # the container being rebuilt. "go run ./cmd/stats" reports on it.
+      LOG_FILE: /logs/api.log
+    volumes:
+      - ./logs:/logs
+    ports: !reset []
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "--url", "http://api:8080"]
+    depends_on:
+      - api
+    restart: unless-stopped

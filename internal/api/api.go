@@ -3,6 +3,7 @@
 //	GET /            the search page
 //	GET /jobs        search and filter open jobs
 //	GET /jobs/{id}   one job, with its full description
+//	POST /jobs/{id}/click  the search page reports a click on a job's link
 //	GET /stats       levels, top companies and top skills for a search
 //	GET /countries   open job counts per country
 //	GET /healthz     liveness check, including the database
@@ -67,6 +68,7 @@ func NewHandler(st JobStore, log *slog.Logger, opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /jobs", s.searchJobs)
 	mux.HandleFunc("GET /jobs/{id}", s.getJob)
+	mux.HandleFunc("POST /jobs/{id}/click", s.jobClick)
 	mux.HandleFunc("GET /stats", s.stats)
 	mux.HandleFunc("GET /countries", s.countries)
 	mux.HandleFunc("GET /healthz", s.health)
@@ -109,22 +111,40 @@ func (s *server) searchJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getJob(w http.ResponseWriter, r *http.Request) {
+	if j, ok := s.lookupJob(w, r); ok {
+		writeJSON(w, http.StatusOK, toJobResponse(j, 0))
+	}
+}
+
+// jobClick records that someone opened a job's link. Links go straight to
+// the employer's site, so the search page reports the click here first.
+// The log line is the record: cmd/stats counts them, by title and company.
+func (s *server) jobClick(w http.ResponseWriter, r *http.Request) {
+	if j, ok := s.lookupJob(w, r); ok {
+		s.log.Info("job click", "id", j.ID, "title", j.Title, "company", j.Company)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// lookupJob loads the job named by the {id} in the path. When it can't, it
+// writes the error response and returns false.
+func (s *server) lookupJob(w http.ResponseWriter, r *http.Request) (store.JobRecord, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id < 1 {
 		writeError(w, http.StatusBadRequest, "id must be a positive integer")
-		return
+		return store.JobRecord{}, false
 	}
 
 	j, err := s.store.GetJob(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "job not found")
-		return
+		return j, false
 	}
 	if err != nil {
 		s.internalError(w, r, err)
-		return
+		return j, false
 	}
-	writeJSON(w, http.StatusOK, toJobResponse(j, 0))
+	return j, true
 }
 
 // statsTop is how many companies and skills /stats returns.

@@ -80,6 +80,7 @@ users.
 ```
 cmd/scraper/                     collect jobs from every source once
 cmd/api/                         HTTP server: REST API and search page
+cmd/stats/                       visitor report from the API's request log
 sources.yaml                     which countries and companies to scrape
 internal/job/                    the unified Job type, seniority, country and skill detection
 internal/scraper/                Scraper interface, concurrent runner, rate-limited HTTP client, text cleanup
@@ -155,7 +156,22 @@ runs it. A failed run is logged and the next day's still happens.
 | `CLIENT_IP_HEADER` | unset; behind a reverse proxy, the header it puts the client's IP in |
 
 To run it on a public server with HTTPS, see
-[Deploying to AWS](docs/deploy-aws.md).
+[Deploying to AWS](docs/deploy-aws.md) (tested locally, not yet on a real
+server). For a short private demo, you can share it straight from your own
+computer instead, with no server or account, through a free Cloudflare quick
+tunnel:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml logs tunnel   # prints the public link
+go run ./cmd/stats                  # who visited, what they searched for, which jobs they opened
+```
+
+With the tunnel, the API also writes its log to `logs/api.log`, which
+`cmd/stats` reads: each request's IP address and search terms, and the jobs
+people opened. The file stays on the computer running the API and is never
+committed. It's meant for small demos with people who know their visits are
+logged; delete `logs/` when the demo is over.
 
 ## API
 

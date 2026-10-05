@@ -1,5 +1,8 @@
 # Deploying to AWS
 
+> **Status:** this setup has been tested on a local machine (Docker Compose
+> with Caddy serving HTTPS), but not yet on a real EC2 server.
+
 This runs the whole app on one small EC2 server: Postgres, the API, the
 daily scraper, and [Caddy](https://caddyserver.com) in front for HTTPS. It's
 the same Docker Compose setup as local development, plus

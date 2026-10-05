@@ -23,3 +23,6 @@ go.work.sum
 .idea/
 .DS_Store
 Thumbs.db
+
+# Request logs written by the API (LOG_FILE), read by cmd/stats
+/logs/

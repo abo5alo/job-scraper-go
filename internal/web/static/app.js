@@ -214,6 +214,13 @@ function jobCard(job) {
     apply.rel = "noopener noreferrer";
   }
 
+  // Both links lead to the employer's site, so tell our server first which
+  // job was opened (for the visitor stats). sendBeacon is made for this: it
+  // still gets sent as the browser moves on, and never delays the link.
+  const reportClick = () => navigator.sendBeacon(`/jobs/${job.id}/click`);
+  link.addEventListener("click", reportClick);
+  apply.addEventListener("click", reportClick);
+
   li.append(title, meta, tags, desc, apply);
   return li;
 }
