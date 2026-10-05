@@ -85,7 +85,7 @@ domain, point it at the server and use that instead.
 
 ```sh
 docker compose up -d --build     # build and start everything (a few minutes the first time)
-docker compose run --rm scraper  # fill the database now instead of waiting for 03:00 UTC (~6 minutes)
+docker compose run --rm scraper  # fill the database now instead of waiting for 03:00 UTC (~4 minutes)
 ```
 
 Then open **https://3-120-45-6.sslip.io** (with your IP). The scheduler

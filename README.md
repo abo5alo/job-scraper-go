@@ -13,10 +13,10 @@ a search page.
 
 - **18 sources covering 10 countries:** Workable's job search (one per
   country), company job boards on 5 different applicant tracking systems,
-  and the Remote OK API. The last run collected ~3,400 jobs, about 800 of
-  them tech. Saudi Arabia and the UAE are still missing because Workable's
-  daily request quota cut that run short (see the roadmap). One scrape takes
-  about 6 minutes, and that's deliberate: the scrapers are rate limited per
+  and the Remote OK API. The last run collected ~5,600 open jobs, about
+  1,100 of them tech. Saudi Arabia is still missing: Workable's daily
+  request quota cuts its search short (see the roadmap). One scrape takes
+  about 4 minutes, and that's deliberate: the scrapers are rate limited per
   host.
 - **Full-text search** with filters for country, city, seniority, company,
   skill and remote work, built on Postgres, with no separate search engine.
@@ -127,14 +127,14 @@ With Docker only:
 
 ```sh
 docker compose up -d --build        # start PostgreSQL, the API and the daily scraper
-docker compose run --rm scraper     # collect jobs right now instead of waiting (~6 minutes)
+docker compose run --rm scraper     # collect jobs right now instead of waiting (~4 minutes)
 ```
 
 Or with Go 1.27+ for development, using Docker just for the database:
 
 ```sh
 docker compose up -d postgres       # start PostgreSQL
-go run ./cmd/scraper                # collect jobs from every source once (~6 minutes)
+go run ./cmd/scraper                # collect jobs from every source once (~4 minutes)
 go run ./cmd/api                    # start the server
 ```
 
